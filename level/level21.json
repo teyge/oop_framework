@@ -1,0 +1,15 @@
+{
+  "tiles": [
+    "tttt",
+    "tttt",
+    "Ptkt",
+    "dtwt",
+    "htct",
+    "tttt"
+  ],
+  "settings": {
+    "Held": { "public": false },
+    "Monster": { "public": true },
+    "Herz": { "public": false }
+  }
+}

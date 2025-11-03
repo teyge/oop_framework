@@ -1,0 +1,14 @@
+{
+  "tiles": [
+    "tttttttt",
+    "tpttwhwt",
+    "twttwtwt",
+    "twwhwwwt",
+    "tttthttt",
+    "ttttwttt",
+    "tttthttt"
+  ],
+  "settings": {
+    "Held": { "public": false }
+  }
+}

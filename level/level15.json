@@ -1,0 +1,34 @@
+{
+  "tiles": [
+    "tttwwwww",
+    "tptwwwww",
+    "twtwwwww",
+    "thtttttt",
+    "thwhhhwh",
+    "tttTtttt",
+    "wwwwwwww"
+  ],
+  "settings": {
+    "Held": {
+      "public": true
+    },
+    "Knappe": {
+      "public": true
+    },
+    "Monster": {
+      "public": true
+    },
+    "Herz": {
+      "public": true
+    },
+    "Tuer": {
+      "public": true
+    },
+    "Code": {
+      "public": true
+    },
+    "Villager": {
+      "public": true
+    }
+  }
+}

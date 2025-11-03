@@ -1,0 +1,33 @@
+{
+  "tiles": [
+    "ttt",
+    "tpt",
+    "tdt",
+    "twt",
+    "tht",
+    "ttt"
+  ],
+  "settings": {
+    "Held": {
+      "public": false
+    },
+    "Knappe": {
+      "public": true
+    },
+    "Monster": {
+      "public": true
+    },
+    "Herz": {
+      "public": false
+    },
+    "Tuer": {
+      "public": true
+    },
+    "Code": {
+      "public": true
+    },
+    "Villager": {
+      "public": true
+    }
+  }
+}
