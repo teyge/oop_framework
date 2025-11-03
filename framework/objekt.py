@@ -327,7 +327,8 @@ class Objekt:
         return bool(self.framework.spielfeld.finde_herz(self.x, self.y))
     
     def herzen_vor_mir(self):
-        """Zählt, wie viele Herzen in Sichtlinie liegen – stoppt bei Hindernis oder Monster."""
+        """Zählt, wie viele Herzen in Sichtlinie liegen – einschließlich des Felds, auf dem das Objekt steht.
+        Stoppt bei Hindernis oder Monster. Das eigene Objekt blockiert nicht."""
         sp = getattr(self, "framework", None)
         sp = getattr(sp, "spielfeld", None) if sp else None
         if not sp:
@@ -335,7 +336,7 @@ class Objekt:
             return 0
 
         dx, dy = richtung_offset(self.richtung)
-        x, y = self.x + dx, self.y + dy
+        x, y = self.x, self.y  # beginne beim aktuellen Feld
         count = 0
 
         # Solange innerhalb des Spielfelds
@@ -344,12 +345,21 @@ class Objekt:
             if terrain != "Weg":
                 break  # Hindernis (Baum, Mauer, etc.)
 
+            # Zähle Herz, auch wenn es auf demselben Feld wie das Objekt liegt
+            herz = sp.finde_herz(x, y)
+            if herz:
+                count += 1
+
             obj = sp.objekt_an(x, y)
             if obj:
-                if obj.typ.lower() == "monster":
+                # Das eigene Objekt soll die Sichtlinie nicht blockieren
+                if obj is self:
+                    pass
+                elif obj.typ.lower() == "monster":
                     break  # Sichtlinie blockiert
                 elif obj.typ.lower() == "herz":
-                    count += 1
+                    # Herz wurde bereits über finde_herz gezählt
+                    pass
                 else:
                     break  # anderes Objekt blockiert
 
