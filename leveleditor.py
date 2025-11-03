@@ -95,6 +95,8 @@ class LevelEditor:
             "Held": False, "Knappe": False, "Monster": False,
             "Herz": False, "Tuer": False, "Code": False, "Villager": False
         }
+        # Orientierungen pro Koordinate als dict "x,y" -> "up|right|down|left"
+        self.orientations = {}
 
     # -----------------------------
     # Sprites
@@ -210,6 +212,18 @@ class LevelEditor:
 
                 # Raster
                 pygame.draw.rect(self.screen, (0, 0, 0), rect, 1)
+                # Richtungsindikator (kleiner Pfeil) falls Orientierung gesetzt oder Tile drehbar
+                key = f"{x},{y}"
+                dir = self.orientations.get(key, None)
+                if dir:
+                    # einfache Pfeil- / Richtungsanzeige: Linie vom Zentrum nach dir
+                    cx, cy = gx + self.tilesize // 2, gy + self.tilesize // 2
+                    off = self.tilesize // 3
+                    vecs = {"up": (0, -off), "right": (off, 0), "down": (0, off), "left": (-off, 0)}
+                    dx, dy = vecs.get(dir, (0, off))
+                    pygame.draw.line(self.screen, (255, 240, 0), (cx, cy), (cx + dx, cy + dy), 3)
+                    # Pfeilspitze
+                    pygame.draw.circle(self.screen, (255, 240, 0), (cx + dx, cy + dy), 4)
 
     def _draw_panel(self):
         x0 = MARGIN + self.grid_w * self.tilesize + MARGIN
@@ -297,11 +311,8 @@ class LevelEditor:
                 self.privacy_flags.setdefault(k, False)
             for k in ["Held", "Knappe", "Monster", "Herz", "Tuer", "Code", "Villager"]:
                 self.privacy_flags.setdefault(k, False)
-        else:
-            self.privacy_flags = {
-                "Held": False, "Knappe": False, "Monster": False,
-                "Herz": False, "Tuer": False, "Code": False, "Villager": False
-            }
+        # Lade Orientierungen, falls vorhanden (Format: {"x,y": "up"})
+        self.orientations = data.get("settings", {}).get("orientations", {})
 
         self._recalc_window()
         self.screen = pygame.display.set_mode((self.win_w, self.win_h))
@@ -310,6 +321,10 @@ class LevelEditor:
         data = {"tiles": ["".join(row) for row in self.level]}
         # Immer Settings schreiben, auch wenn alle False sind
         data["settings"] = {k: {"public": not v} for k, v in self.privacy_flags.items()}
+        # Orientierungen exportieren (falls gesetzt)
+        if self.orientations:
+            data["settings"].setdefault("orientations", {})
+            data["settings"]["orientations"].update(self.orientations)
         return data
 
 
@@ -369,6 +384,9 @@ class LevelEditor:
                         self.resize(0, -1)
                     elif pygame.K_0 <= event.key <= pygame.K_9:
                         self.handle_digit(chr(event.key))
+                elif event.type == pygame.MOUSEWHEEL:
+                    # Mausrad drehen => Orientierung ändern (Vorsicht: event.y positive = up)
+                    self.rotate_orientation_at_mouse(event.y)
             self.draw()
             self.clock.tick(60)
         pygame.quit()
@@ -397,6 +415,27 @@ class LevelEditor:
         # Standardtiles
         if key_str in TILES:
             self.selected_code = TILES[key_str][0]
+
+    # -----------------------------
+    # Mausrad / Orientierungen
+    # -----------------------------
+    def rotate_orientation_at_mouse(self, delta):
+        """Delta int: positive = wheel up, negative = wheel down. Zyklisch: up->right->down->left."""
+        mx, my = pygame.mouse.get_pos()
+        gx = (mx - MARGIN) // self.tilesize
+        gy = (my - MARGIN) // self.tilesize
+        if not (0 <= gx < self.grid_w and 0 <= gy < self.grid_h):
+            return
+        code = self.level[gy][gx]
+        # Nur für entitätstypen (veränderbar) reagieren; erweitert bei Bedarf
+        if code.lower() not in ("p", "k", "x", "d", "g", "v"):
+            return
+        key = f"{gx},{gy}"
+        dirs = ["up", "right", "down", "left"]
+        cur = self.orientations.get(key, "down")
+        idx = dirs.index(cur) if cur in dirs else 2
+        idx = (idx + (1 if delta > 0 else -1)) % 4
+        self.orientations[key] = dirs[idx]
 
     # -----------------------------
     # Resize

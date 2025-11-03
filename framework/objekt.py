@@ -310,11 +310,16 @@ class Objekt:
                self.framework.spielfeld.terrain_art_an(tx, ty)
 
     def gib_objekt_vor_dir(self):
-        if self.framework and getattr(self.framework, "_aktion_blockiert", False):
-            return
-        dx, dy = richtung_offset(self.richtung)
-        tx, ty = self.x + dx, self.y + dy
-        return self.framework.spielfeld.objekt_an(tx, ty)
+        """Gibt das erste Objekt auf dem Feld vor diesem Objekt zurück (oder None).
+        Verwendet immer self.richtung und self.framework.spielfeld."""
+        sp = getattr(self, "framework", None)
+        sp = getattr(sp, "spielfeld", None) if sp else None
+        if not sp:
+            return None
+        richt = getattr(self, "richtung", "down")
+        dx, dy = richtung_offset(richt)
+        tx, ty = getattr(self, "x", 0) + dx, getattr(self, "y", 0) + dy
+        return sp.objekt_an(tx, ty)
 
     def ist_auf_herz(self):
         """

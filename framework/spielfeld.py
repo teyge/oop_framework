@@ -41,74 +41,89 @@ class Spielfeld:
         from .herz import Herz
         from .monster import Monster
         from .tor import Tor
-        for typ, x, y,sichtbar in self.level.iter_entity_spawns():
-            if typ == "p":
-                self.held = Held(self.framework, x, y, "down",weiblich=self.framework.weiblich)
+        from .code import Code
+        from .tuer import Tuer
+
+        # Orientierungen evtl. in self.settings["orientations"] als {"x,y":"up"}
+        orients = self.settings.get("orientations", {}) if isinstance(self.settings, dict) else {}
+
+        for typ, x, y, sichtbar in self.level.iter_entity_spawns():
+            t = typ.lower() if isinstance(typ, str) else typ
+            # Lese Richtung (default "down")
+            richt = orients.get(f"{x},{y}", "down")
+
+            if t == "p":
+                self.held = Held(self.framework, x, y, richt, weiblich=getattr(self.framework, "weiblich", False))
                 self.objekte.append(self.held)
                 if sichtbar:
                     import framework.grundlage as grundlage
                     setattr(grundlage, self.held.typ.lower(), self.held)
-            elif typ == "h":
-                obj = Herz(x,y)
+
+            elif t == "h":
+                obj = Herz(x, y)
+                obj.framework = self.framework
                 cfg = self.settings.get(obj.typ, {})
                 self.objekte.append(obj)
                 if sichtbar:
                     import framework.grundlage as grundlage
                     setattr(grundlage, obj.typ.lower(), obj)
-            elif typ == "x":
+
+            elif t == "x":
                 n = self.generate_orc_name()
                 while n in self.orc_names:
                     n = self.generate_orc_name()
                 self.orc_names.append(n)
-                m = Monster(x,y,name=n)
+                m = Monster(x, y, name=n)
                 m.framework = self.framework
+                # setze Richtung falls unterstützt
+                try:
+                    m.richtung = richt
+                except Exception:
+                    pass
                 self.objekte.append(m)
                 if sichtbar:
                     import framework.grundlage as grundlage
                     setattr(grundlage, m.typ.lower(), m)
-            elif typ == "c":
-                from .code import Code
-                code = Code(x, y,c=self.zufallscode)
+
+            elif t == "c":
+                code = Code(x, y, c=self.zufallscode)
                 code.framework = self.framework
                 self.objekte.append(code)
                 if sichtbar:
                     import framework.grundlage as grundlage
-                    setattr(grundlage, code.typ.lower(), code)
+                    setattr(grundlage, "zettel", code)
 
-            elif typ == "d":
-                from .tuer import Tuer
-                tuer = Tuer(x, y, code=self.zufallscode)  # z. B. Standardcode
+            elif t == "d":
+                tuer = Tuer(x, y, code=self.zufallscode)
                 tuer.framework = self.framework
                 self.objekte.append(tuer)
+                # setze Richtung falls das Tür-Objekt diese Eigenschaft nutzt
+                try:
+                    tuer.richtung = richt
+                except Exception:
+                    pass
                 if sichtbar:
                     import framework.grundlage as grundlage
                     setattr(grundlage, "tuer", tuer)
-            elif typ == "g":
+
+            elif t == "g":
                 tor = Tor(x, y, offen=False)
                 tor.framework = self.framework
                 self.objekte.append(tor)
                 if sichtbar:
                     import framework.grundlage as grundlage
                     setattr(grundlage, "tor", tor)
-            elif typ == "k":
-                self.knappe = Knappe(self.framework, x, y, "down",name=self.generate_knappe_name())
+
+            elif t == "k":
+                self.knappe = Knappe(self.framework, x, y, richt, name=self.generate_knappe_name())
                 self.objekte.append(self.knappe)
                 if sichtbar:
                     import framework.grundlage as grundlage
                     setattr(grundlage, "knappe", self.knappe)
-        """
-        if not self.held:
-            from .held import Held
-            print("[Warnung] Kein Held im Level – Dummy bei (0,0).")
-            self.held = Held(self.framework, 0, 0, "down")
-            self.objekte.append(self.held)
-        """
-            
+
         print(f"Level geladen: {len(self.objekte)} Objekte gespawnt.")
         for o in self.objekte:
-            #print(f" - {o.name} an ({o.x}, {o.y})")
             cfg = self.settings.get(o.typ, {})
-
             if cfg.get("public") is False:
                 o.set_privatmodus(True)
             if o.typ == "Knappe":
