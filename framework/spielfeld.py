@@ -774,8 +774,43 @@ class Spielfeld:
                         return False
                     src = open(path, 'r', encoding='utf-8').read()
                     tree = ast.parse(src, path)
+                    # helper: check whether the class __init__ sets required attributes
+                    def _class_has_required_attrs(class_node, required):
+                        found = set()
+                        for item in class_node.body:
+                            # look for assignments like self.x = ...
+                            if isinstance(item, ast.FunctionDef) and item.name == '__init__':
+                                for stmt in ast.walk(item):
+                                    # self.x = ...
+                                    if isinstance(stmt, ast.Assign):
+                                        for t in stmt.targets:
+                                            if isinstance(t, ast.Attribute) and isinstance(t.value, ast.Name) and t.value.id == 'self':
+                                                found.add(t.attr)
+                                    # setattr(self, 'x', ...)
+                                    if isinstance(stmt, ast.Call) and isinstance(stmt.func, ast.Name) and stmt.func.id == 'setattr':
+                                        args = stmt.args
+                                        if len(args) >= 2:
+                                            if isinstance(args[0], ast.Name) and args[0].id == 'self':
+                                                # second arg may be a constant/string
+                                                a1 = args[1]
+                                                if isinstance(a1, ast.Constant) and isinstance(a1.value, str):
+                                                    found.add(a1.value)
+                                                elif isinstance(a1, ast.Str):
+                                                    found.add(a1.s)
+                        return set(required).issubset(found)
+
                     for node in tree.body:
                         if isinstance(node, ast.ClassDef) and node.name == cls_name:
+                            # For Held classes require that __init__ assigns a minimal set
+                            if cls_name == 'Held':
+                                required = ['level', 'x', 'y', 'richtung', 'weiblich', 'typ']
+                                try:
+                                    if _class_has_required_attrs(node, required):
+                                        return True
+                                    else:
+                                        return False
+                                except Exception:
+                                    return False
                             return True
                     return False
                 except Exception:

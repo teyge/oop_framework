@@ -4,7 +4,7 @@ vom Framework verwendet werden kann, wenn in Level-Settings
 "import_pfad": "schueler" gesetzt ist.
 """
 
-"""class Held:
+class Held:
     def __init__(self, level, x, y, richt, weiblich=False):
         # Student-implementierte Held-Klasse erhält nur die Level-Instanz (nicht das gesamte Framework)
         self.level = level
@@ -14,7 +14,7 @@ vom Framework verwendet werden kann, wenn in Level-Settings
         self.weiblich = weiblich
         self.gold = 0
         self.typ = "Held"
-
+"""
     def links(self):
         if self.richung=="down":
             self.richtung="right"
@@ -26,7 +26,7 @@ vom Framework verwendet werden kann, wenn in Level-Settings
 
     
 from framework.grundlage import level
-level.lade(0,weiblich=False)
+level.lade(30,weiblich=False)
 from framework.grundlage import *
 
 # Ab hier darfst du programmieren:
