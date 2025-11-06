@@ -90,6 +90,24 @@ class LevelEditor:
         # Persisted per-tile settings (colors for doors/keys, villagers genders)
         self.colors = {}
         self.villagers = {}
+        # Persisted quest settings per tile
+        self.quests = {}
+
+        # Extra level-wide settings (initial_gold, quest_max_kosten, quest_mode, quest_items_needed)
+        self.level_settings = {}
+
+        # Victory condition settings (editable via F3)
+        # Stored under level_settings['victory'] as a dict. Backwards-compatible default
+        # is to require collecting all hearts.
+        self.level_settings.setdefault('victory', {"collect_hearts": True, "move_to": None, "classes_present": False})
+
+        # Student-class loader flags (F2 toggles)
+        # If True the exported level will indicate student classes should be used
+        # If student_classes_in_subfolder is True, the editor will mark that
+        # student classes are expected under the `klassen/` package instead of
+        # the repo root `schueler.py`.
+        self.use_student_module = False
+        self.student_classes_in_subfolder = False
 
         # Sprites
         self.sprites = self._load_all_sprites()
@@ -285,6 +303,18 @@ class LevelEditor:
                     # Pfeilspitze
                     pygame.draw.circle(self.screen, (255, 240, 0), (cx + dx, cy + dy), 4)
 
+                # If a move-to victory target is configured, draw a red highlight around that tile
+                try:
+                    vic = self.level_settings.get('victory', {}) or {}
+                    mv = vic.get('move_to') if isinstance(vic, dict) else None
+                    if mv and isinstance(mv, dict) and mv.get('enabled'):
+                        tx = int(mv.get('x', -999))
+                        ty = int(mv.get('y', -999))
+                        if tx == x and ty == y:
+                            pygame.draw.rect(self.screen, (255, 0, 0), rect, 4)
+                except Exception:
+                    pass
+
     def _draw_panel(self):
         x0 = MARGIN + self.grid_w * self.tilesize + MARGIN
         y = MARGIN
@@ -341,6 +371,60 @@ class LevelEditor:
         surf = font.render(text, True, color)
         self.screen.blit(surf, (x, y))
 
+    def open_quest_dialog(self):
+        """Öffnet einen kleinen Dialog, um am Mauszeiger einen Questgeber zu platzieren
+        und die Quest-Parameter (modus, wuensche, anzahl) festzulegen.
+        """
+        # Mouse grid coord
+        mx, my = pygame.mouse.get_pos()
+        gx = (mx - MARGIN) // self.tilesize
+        gy = (my - MARGIN) // self.tilesize
+        if not (0 <= gx < self.grid_w and 0 <= gy < self.grid_h):
+            return
+
+        # Tkinter dialog
+        root = tk.Tk(); root.title("Questgeber platzieren")
+        frm = ttk.Frame(root, padding=10); frm.grid(row=0, column=0)
+
+        ttk.Label(frm, text=f"Position: {gx},{gy}").grid(row=0, column=0, columnspan=2, sticky='w')
+        ttk.Label(frm, text="Modus:").grid(row=1, column=0, sticky='w')
+        modus_var = tk.StringVar(value='items')
+        ttk.Radiobutton(frm, text='Items', variable=modus_var, value='items').grid(row=1, column=1, sticky='w')
+        ttk.Radiobutton(frm, text='Rätsel', variable=modus_var, value='raetsel').grid(row=1, column=2, sticky='w')
+
+        ttk.Label(frm, text="Wuensche (Komma-separiert, Namen):").grid(row=2, column=0, sticky='w')
+        wishes_ent = ttk.Entry(frm, width=40)
+        wishes_ent.grid(row=2, column=1, columnspan=2)
+
+        ttk.Label(frm, text="Anzahl Items (optional):").grid(row=3, column=0, sticky='w')
+        anz_ent = ttk.Entry(frm, width=10)
+        anz_ent.grid(row=3, column=1, sticky='w')
+
+        def ok():
+            mode = modus_var.get()
+            wishes = [w.strip() for w in wishes_ent.get().split(',') if w.strip()]
+            anz = None
+            try:
+                anz = int(anz_ent.get())
+            except Exception:
+                anz = None
+            key = f"{gx},{gy}"
+            self.quests[key] = {"modus": mode}
+            if wishes:
+                self.quests[key]["wuensche"] = wishes
+            if anz is not None:
+                self.quests[key]["anzahl"] = anz
+            # set tile to 'q'
+            self.level[gy][gx] = 'q'
+            root.destroy()
+
+        def cancel():
+            root.destroy()
+
+        ttk.Button(frm, text="OK", command=ok).grid(row=4, column=1, pady=8)
+        ttk.Button(frm, text="Abbrechen", command=cancel).grid(row=4, column=2, pady=8)
+        root.mainloop()
+
     # -----------------------------
     # Privatisierung (F1)
     # -----------------------------
@@ -369,6 +453,163 @@ class LevelEditor:
         root.mainloop()
 
     # -----------------------------
+    # Allgemeine Level-Einstellungen (F2)
+    # -----------------------------
+    def open_settings_dialog(self):
+        """Öffnet einen Dialog zum Einstellen von Level-weiten Parametern:
+        initial_gold, quest_max_kosten, quest_mode, quest_items_needed
+        """
+        root = tk.Tk(); root.title("Level-Einstellungen")
+        frm = ttk.Frame(root, padding=10); frm.grid(row=0, column=0)
+
+        ttk.Label(frm, text="Start-Gold:").grid(row=0, column=0, sticky='w')
+        gold_var = tk.StringVar(value=str(self.level_settings.get('initial_gold', 0)))
+        ttk.Entry(frm, textvariable=gold_var, width=12).grid(row=0, column=1, sticky='w')
+
+        ttk.Label(frm, text="Quest-Modus:").grid(row=1, column=0, sticky='w')
+        qm_var = tk.StringVar(value=str(self.level_settings.get('quest_mode', 'items')))
+        ttk.Radiobutton(frm, text='items', variable=qm_var, value='items').grid(row=1, column=1, sticky='w')
+        ttk.Radiobutton(frm, text='raetsel', variable=qm_var, value='raetsel').grid(row=1, column=2, sticky='w')
+
+        ttk.Label(frm, text="Quest max Kosten:").grid(row=2, column=0, sticky='w')
+        qmk_var = tk.StringVar(value=str(self.level_settings.get('quest_max_kosten', 0)))
+        ttk.Entry(frm, textvariable=qmk_var, width=12).grid(row=2, column=1, sticky='w')
+
+        ttk.Label(frm, text="Quest Items benötigt:").grid(row=3, column=0, sticky='w')
+        qin_var = tk.StringVar(value=str(self.level_settings.get('quest_items_needed', 1)))
+        ttk.Entry(frm, textvariable=qin_var, width=12).grid(row=3, column=1, sticky='w')
+
+        # Schüler-Klassen Optionen
+        ttk.Label(frm, text="Schüler-Klassen:", font=("Consolas", 10, "bold")).grid(row=10, column=0, sticky='w', pady=(8,0))
+        use_student_var = tk.BooleanVar(value=bool(getattr(self, 'use_student_module', False)))
+        subfolder_var = tk.BooleanVar(value=bool(getattr(self, 'student_classes_in_subfolder', False)))
+        # Make the two options mutually exclusive: if one is checked the other is unchecked
+        def on_use_changed():
+            try:
+                if use_student_var.get():
+                    subfolder_var.set(False)
+            except Exception:
+                pass
+
+        def on_subfolder_changed():
+            try:
+                if subfolder_var.get():
+                    use_student_var.set(False)
+            except Exception:
+                pass
+
+        # Ensure initial state is not contradictory
+        try:
+            if use_student_var.get() and subfolder_var.get():
+                # prefer the explicit subfolder flag to be false in case both were set
+                subfolder_var.set(False)
+        except Exception:
+            pass
+
+        chk_use = ttk.Checkbutton(frm, text="Schülerklassen verwenden (schueler.py)", variable=use_student_var, command=on_use_changed)
+        chk_use.grid(row=11, column=0, columnspan=2, sticky='w')
+        chk_sub = ttk.Checkbutton(frm, text="Schülerklassen in Unterordner (klassen/)", variable=subfolder_var, command=on_subfolder_changed)
+        chk_sub.grid(row=12, column=0, columnspan=2, sticky='w')
+
+        def ok():
+            try:
+                self.level_settings['initial_gold'] = int(gold_var.get())
+            except Exception:
+                self.level_settings['initial_gold'] = 0
+            self.level_settings['quest_mode'] = qm_var.get()
+            try:
+                self.level_settings['quest_max_kosten'] = int(qmk_var.get())
+            except Exception:
+                self.level_settings['quest_max_kosten'] = 0
+            try:
+                self.level_settings['quest_items_needed'] = int(qin_var.get())
+            except Exception:
+                self.level_settings['quest_items_needed'] = 1
+            # Persist the student-class flags on the editor instance
+            try:
+                self.use_student_module = bool(use_student_var.get())
+            except Exception:
+                self.use_student_module = False
+            try:
+                self.student_classes_in_subfolder = bool(subfolder_var.get())
+            except Exception:
+                self.student_classes_in_subfolder = False
+            root.destroy()
+
+        def cancel():
+            root.destroy()
+
+        ttk.Button(frm, text='OK', command=ok).grid(row=4, column=1, pady=8)
+        ttk.Button(frm, text='Abbrechen', command=cancel).grid(row=4, column=2, pady=8)
+        root.mainloop()
+
+    # -----------------------------
+    # Victory conditions (F3)
+    # -----------------------------
+    def open_victory_dialog(self):
+        """Dialog (F3) to configure multiple victory conditions.
+        - Collect all hearts (boolean)
+        - Move to coordinate (boolean + x,y)
+        - Classes implemented (boolean)
+        """
+        # Prefill with existing values
+        vic = self.level_settings.get('victory', {}) or {}
+        collect_def = bool(vic.get('collect_hearts', True))
+        move_def = vic.get('move_to') or {}
+        move_enabled = bool(move_def.get('enabled', False)) if isinstance(move_def, dict) else False
+        move_x = str(move_def.get('x', 0)) if isinstance(move_def, dict) else '0'
+        move_y = str(move_def.get('y', 0)) if isinstance(move_def, dict) else '0'
+        classes_def = bool(vic.get('classes_present', False))
+
+        root = tk.Tk(); root.title("Siegbedingungen (F3)")
+        frm = ttk.Frame(root, padding=10); frm.grid(row=0, column=0)
+
+        ttk.Label(frm, text="Siegbedingungen:", font=("Consolas", 12, "bold")).grid(row=0, column=0, columnspan=3, sticky='w')
+
+        collect_var = tk.BooleanVar(value=collect_def)
+        tk.Checkbutton(frm, text="Alle Herzen sammeln (Standard)", variable=collect_var).grid(row=1, column=0, columnspan=3, sticky='w', pady=(6,2))
+
+        move_var = tk.BooleanVar(value=move_enabled)
+        tk.Checkbutton(frm, text="Zum Zielfeld bewegen (x,y):", variable=move_var).grid(row=2, column=0, sticky='w')
+        x_ent = ttk.Entry(frm, width=6)
+        x_ent.insert(0, move_x)
+        x_ent.grid(row=2, column=1, sticky='w')
+        y_ent = ttk.Entry(frm, width=6)
+        y_ent.insert(0, move_y)
+        y_ent.grid(row=2, column=2, sticky='w')
+
+        ttk.Label(frm, text="Tipp: Klicke das Level-Feld an und öffne F3, um Koordinaten vorzufüllen.").grid(row=3, column=0, columnspan=3, sticky='w', pady=(4,6))
+
+        classes_var = tk.BooleanVar(value=classes_def)
+        tk.Checkbutton(frm, text="Alle im Level verwendeten Klassen implementiert (Schülerklassen)", variable=classes_var).grid(row=4, column=0, columnspan=3, sticky='w', pady=(6,2))
+
+        def ok():
+            try:
+                v = {}
+                v['collect_hearts'] = bool(collect_var.get())
+                if move_var.get():
+                    try:
+                        vx = int(x_ent.get())
+                        vy = int(y_ent.get())
+                        v['move_to'] = {'enabled': True, 'x': vx, 'y': vy}
+                    except Exception:
+                        v['move_to'] = {'enabled': False}
+                else:
+                    v['move_to'] = None
+                v['classes_present'] = bool(classes_var.get())
+                self.level_settings['victory'] = v
+            except Exception:
+                pass
+            root.destroy()
+
+        def cancel():
+            root.destroy()
+
+        ttk.Button(frm, text='OK', command=ok).grid(row=5, column=1, pady=8)
+        ttk.Button(frm, text='Abbrechen', command=cancel).grid(row=5, column=2, pady=8)
+        root.mainloop()
+
+    # -----------------------------
     # JSON I/O
     # -----------------------------
     def from_json(self, data):
@@ -381,10 +622,27 @@ class LevelEditor:
 
         # Settings optional (Abwärtskompatibilität)
         if "settings" in data:
-            self.privacy_flags = {k: v.get("privat", False) for k, v in data["settings"].items()}
-            # Fehlende Klassen auf False ergänzen
-            for k in list(self.privacy_flags.keys()):
-                self.privacy_flags.setdefault(k, False)
+            # settings may contain both per-type dicts (e.g. {"Held": {"public": true}})
+            # and scalar keys (initial_gold, quest_mode...). Be defensive and only
+            # extract privacy info from dict entries. Support both old 'privat' and
+            # current 'public' keys.
+            self.privacy_flags = {}
+            try:
+                for k, v in data["settings"].items():
+                    if isinstance(v, dict):
+                        if 'privat' in v:
+                            self.privacy_flags[k] = bool(v.get('privat', False))
+                        elif 'public' in v:
+                            # privacy flag stored as public: True/False -> invert
+                            self.privacy_flags[k] = not bool(v.get('public', True))
+                        else:
+                            # no privacy info in this dict
+                            continue
+            except Exception:
+                # defensive fallback: empty dict
+                self.privacy_flags = {}
+
+            # Ensure expected keys exist
             for k in ["Held", "Knappe", "Monster", "Herz", "Tuer", "Code", "Villager"]:
                 self.privacy_flags.setdefault(k, False)
         # Lade Orientierungen, falls vorhanden (Format: {"x,y": "up"})
@@ -394,6 +652,39 @@ class LevelEditor:
         self.colors = settings.get("colors", {}) or {}
         # Lade Villager-Geschlechter
         self.villagers = settings.get("villagers", {}) or {}
+        # Lade Quest-Konfigurationen
+        self.quests = settings.get("quests", {}) or {}
+        # Lade zusätzliche Level-Einstellungen (z.B. initial_gold, quest_max_kosten,...)
+        for k in ("initial_gold", "quest_max_kosten", "quest_mode", "quest_items_needed"):
+            if k in settings:
+                self.level_settings[k] = settings.get(k)
+
+        # Load victory settings if present (backwards compatible: default to collect_hearts)
+        try:
+            vic = settings.get('victory')
+            default_vic = {"collect_hearts": True, "move_to": None, "classes_present": False}
+            # If level file contains an explicit victory dict, use it. Otherwise
+            # overwrite any previous editor state with the default so that the
+            # editor doesn't carry the last-loaded level's target into the new one.
+            if isinstance(vic, dict):
+                self.level_settings['victory'] = vic
+            else:
+                self.level_settings['victory'] = default_vic
+        except Exception:
+            self.level_settings['victory'] = {"collect_hearts": True, "move_to": None, "classes_present": False}
+
+        # Lade Flags für Schülerklassen (falls vorhanden)
+        try:
+            self.use_student_module = bool(settings.get('use_student_module', False))
+        except Exception:
+            self.use_student_module = False
+        try:
+            self.student_classes_in_subfolder = bool(settings.get('student_classes_in_subfolder', False))
+        except Exception:
+            self.student_classes_in_subfolder = False
+
+        # Ensure victory settings present (backwards compatibility)
+        self.level_settings.setdefault('victory', {"collect_hearts": True, "move_to": None, "classes_present": False})
 
         self._recalc_window()
         self.screen = pygame.display.set_mode((self.win_w, self.win_h))
@@ -414,6 +705,29 @@ class LevelEditor:
         if self.villagers:
             data["settings"].setdefault("villagers", {})
             data["settings"]["villagers"].update(self.villagers)
+        # Quests exportieren
+        if self.quests:
+            data["settings"].setdefault("quests", {})
+            data["settings"]["quests"].update(self.quests)
+        # Zusätzliche Level-Einstellungen exportieren (falls gesetzt)
+        if getattr(self, 'level_settings', None):
+            for k, v in self.level_settings.items():
+                # only export simple scalars
+                try:
+                    if v is None:
+                        continue
+                    data["settings"][k] = v
+                except Exception:
+                    continue
+        # Export student-class flags so the framework can decide whether to load them
+        try:
+            data["settings"]["use_student_module"] = bool(getattr(self, 'use_student_module', False))
+        except Exception:
+            pass
+        try:
+            data["settings"]["student_classes_in_subfolder"] = bool(getattr(self, 'student_classes_in_subfolder', False))
+        except Exception:
+            pass
         return data
 
 
@@ -459,6 +773,10 @@ class LevelEditor:
                         running = False
                     elif event.key == pygame.K_F1:
                         self.open_privacy_menu()
+                    elif event.key == pygame.K_F2:
+                        self.open_settings_dialog()
+                    elif event.key == pygame.K_F3:
+                        self.open_victory_dialog()
                     elif event.key == pygame.K_s:
                         self.speicher_dialog()
                     elif event.key == pygame.K_o:
@@ -471,6 +789,9 @@ class LevelEditor:
                         self.resize(-1, 0)
                     elif event.key == pygame.K_UP:
                         self.resize(0, -1)
+                    elif event.key == pygame.K_q:
+                        # Quest konfigurieren / platzieren
+                        self.open_quest_dialog()
                     elif pygame.K_0 <= event.key <= pygame.K_9:
                         self.handle_digit(chr(event.key))
                 elif event.type == pygame.MOUSEWHEEL:

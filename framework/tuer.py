@@ -14,8 +14,13 @@ class Tuer(Objekt):
                 sprite_pfad = f"sprites/locked_door_{color}.png"
             else:
                 sprite_pfad = "sprites/tuer.png"
-        super().__init__("Tür", x, y, "down", sprite_pfad)
+        # Use 'Tuer' as the canonical type name (ASCII) for consistency with level settings/tests
+        # Present the human-readable name with Umlaut so code that checks for 'Tür' still works
+        super().__init__("Tuer", x, y, "down", sprite_pfad, name="Tür")
         self._richtiger_code = code
+        # Farbattribut: 'farbe' ist die neue, deutsch-benannte Eigenschaft.
+        # Wir behalten 'key_color' als Alias für Abwärtskompatibilität.
+        self.farbe = color
         self.key_color = color
         self.offen = False
 
@@ -46,12 +51,36 @@ class Tuer(Objekt):
         """Versuche die Tür mit einem Schlüssel-Objekt zu öffnen.
         schluessel kann ein Objekt mit .color / .key_color Attribut sein.
         """
-        if schluessel is None:
+        # Behalte bestehendes Verhalten über eine neue zentrale Methode
+        return self.verwende_schluessel(schluessel)
+
+    def verwende_schluessel(self, key) -> bool:
+        """
+        Öffnet die Tür, wenn der übergebene Schlüssel die passende Farbe hat.
+        key: Objekt mit Attributen 'farbe' (deutsch), 'color' oder 'key_color'.
+        Wenn self.farbe is None, akzeptiere jeden Schlüssel (universell).
+        Setzt self.offen = True und lädt das offene Sprite. Rückgabe True bei Erfolg.
+        """
+        if key is None:
             return False
-        color = getattr(schluessel, "color", None) or getattr(schluessel, "key_color", None)
-        if color and self.key_color and color == self.key_color:
+        # Ermittle Schlüssel-Farbe (prüfe deutsch/englisch Alias)
+        kfarbe = getattr(key, 'farbe', None)
+        if kfarbe is None:
+            kfarbe = getattr(key, 'color', None)
+        if kfarbe is None:
+            kfarbe = getattr(key, 'key_color', None)
+
+        # Türfarbe (None = universell)
+        tfarbe = getattr(self, 'farbe', None) or getattr(self, 'key_color', None)
+
+        if tfarbe is None:
+            # universelle Tür: jeder Schlüssel wirkt
+            ok = True
+        else:
+            ok = (kfarbe == tfarbe)
+
+        if ok:
             self.offen = True
-            # lade offenes Sprite falls vorhanden
             try:
                 self.bild = lade_sprite("sprites/tuer_offen.png")
             except Exception:
@@ -61,6 +90,18 @@ class Tuer(Objekt):
         
     def ist_passierbar(self):
         return not self.offen
+
+    # ----------------
+    # Getter API
+    # ----------------
+    def get_farbe(self):
+        """Gibt die konfigurierte Farbe der Tür zurück (oder None wenn universell)."""
+        # prefer the german attribute, fall back to english alias
+        return getattr(self, 'farbe', None) or getattr(self, 'key_color', None)
+
+    def get_offen(self) -> bool:
+        """Gibt zurück, ob die Tür offen ist (True) oder geschlossen (False)."""
+        return bool(getattr(self, 'offen', False))
     
     def update(self):
         # Sprite abhängig vom Zustand der Tür wechseln

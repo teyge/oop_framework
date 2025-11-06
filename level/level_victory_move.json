@@ -1,0 +1,16 @@
+{
+  "tiles": [
+    "wwwww",
+    "wpwww",
+    "wwwww",
+    "wwwww",
+    "wwwww"
+  ],
+  "settings": {
+    "victory": {
+      "collect_hearts": true,
+      "move_to": { "enabled": true, "x": 2, "y": 0 },
+      "classes_present": false
+    }
+  }
+}

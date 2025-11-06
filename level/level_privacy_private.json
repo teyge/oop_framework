@@ -1,0 +1,14 @@
+{
+  "tiles": [
+    "wwwww",
+    "wpdww",
+    "wwhww",
+    "wwwww",
+    "wwwww"
+  ],
+  "settings": {
+    "Held": {"public": false},
+    "Herz": {"public": false},
+    "Tuer": {"public": false}
+  }
+}

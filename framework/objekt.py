@@ -28,14 +28,28 @@ class Objekt:
         self._privatmodus = aktiv
         
     def setze_richtung(self,r):
-        if r not in ["up","down","left","right"]:
-            if r not in ["N","S","O","W"]:
-                print("Ungültige Richtungsangabe!")
-            else:
-                print(self.transmute_richtung(r))
-                self.richtung = self.transmute_richtung(r)
-        else:
-            self.richtung = r
+        # Accept English canonical, single-letter abbreviations, and German names
+        if not isinstance(r, str):
+            print("Ungültige Richtungsangabe!")
+            return
+        norm = r.strip().lower()
+        mapping = {
+            'up': 'up', 'n': 'up', 'north': 'up', 'norden': 'up',
+            'down': 'down', 's': 'down', 'south': 'down', 'süden': 'down', 'sueden': 'down',
+            'left': 'left', 'w': 'left', 'west': 'left', 'westen': 'left',
+            'right': 'right', 'o': 'right', 'east': 'right', 'osten': 'right', 'ost': 'right'
+        }
+        canon = mapping.get(norm)
+        if canon is None:
+            # try replacing umlauts
+            alt = norm.replace('ü', 'ue').replace('ö', 'oe').replace('ä', 'ae')
+            canon = mapping.get(alt)
+
+        if canon is None:
+            print("Ungültige Richtungsangabe!")
+            return
+        # set canonical
+        self.richtung = canon
         self._update_sprite_richtung()
             
     def setze_position(self, x, y):
@@ -77,13 +91,33 @@ class Objekt:
         if name.startswith("_"):
             return object.__getattribute__(self, name)
 
-        # Framework-interner Zugriff bleibt erlaubt
-        caller = sys._getframe(1).f_code.co_filename
-        if "/framework" in caller.replace("\\", "/"):
+        # Framework-internal callers should be allowed. Detect callers by
+        # module name (preferred) or by an exact '/framework/' path segment
+        # to avoid false positives for repository names containing 'framework'.
+        try:
+            frm = sys._getframe(1)
+            caller_mod = frm.f_globals.get('__name__', '')
+            caller_file = frm.f_code.co_filename.replace('\\', '/')
+        except Exception:
+            caller_mod = ''
+            caller_file = ''
+
+        if isinstance(caller_mod, str) and (caller_mod == 'framework' or caller_mod.startswith('framework.')):
+            return object.__getattribute__(self, name)
+        if '/framework/' in caller_file:
             return object.__getattribute__(self, name)
 
-        if object.__getattribute__(self, "_privatmodus") and name in ("x", "y", "r", "richtung"):
-            raise AttributeError(f"Attribut '{name}' ist privat – Zugriff nicht erlaubt")
+        if object.__getattribute__(self, "_privatmodus"):
+            # Block movement-related attributes for students when privat mode is active
+            if name in ("x", "y", "r", "richtung"):
+                raise AttributeError(f"Attribut '{name}' ist privat – Zugriff nicht erlaubt")
+            # Additionally, if this is a Tür, block 'offen' when privat
+            try:
+                typ = object.__getattribute__(self, 'typ')
+            except Exception:
+                typ = None
+            if typ == 'Tuer' and name == 'offen':
+                raise AttributeError(f"Attribut '{name}' ist privat – Zugriff nicht erlaubt")
 
         return object.__getattribute__(self, name)
 
@@ -94,12 +128,28 @@ class Objekt:
             return object.__setattr__(self, name, value)
         
 
-        caller = sys._getframe(1).f_code.co_filename
-        if "/framework" in caller.replace("\\", "/"):
+        try:
+            frm = sys._getframe(1)
+            caller_mod = frm.f_globals.get('__name__', '')
+            caller_file = frm.f_code.co_filename.replace('\\', '/')
+        except Exception:
+            caller_mod = ''
+            caller_file = ''
+
+        if isinstance(caller_mod, str) and (caller_mod == 'framework' or caller_mod.startswith('framework.')):
+            return object.__setattr__(self, name, value)
+        if '/framework/' in caller_file:
             return object.__setattr__(self, name, value)
 
-        if object.__getattribute__(self, "_privatmodus") and name in ("x", "y", "r", "richtung"):
-            raise AttributeError(f"Attribut '{name}' ist privat – Schreiben nicht erlaubt")
+        if object.__getattribute__(self, "_privatmodus"):
+            if name in ("x", "y", "r", "richtung"):
+                raise AttributeError(f"Attribut '{name}' ist privat – Schreiben nicht erlaubt")
+            try:
+                typ = object.__getattribute__(self, 'typ')
+            except Exception:
+                typ = None
+            if typ == 'Tuer' and name == 'offen':
+                raise AttributeError(f"Attribut '{name}' ist privat – Schreiben nicht erlaubt")
 
         object.__setattr__(self, name, value)
 
@@ -248,6 +298,21 @@ class Objekt:
         if herz:
             self.framework.spielfeld.entferne_objekt(herz)
             self._herzen += 1
+            # reward gold to holder if configured
+            try:
+                from .config import HEART_GOLD
+                if hasattr(self, 'gold'):
+                    try:
+                        self.gold = int(getattr(self, 'gold', 0) or 0) + int(HEART_GOLD)
+                    except Exception:
+                        # best-effort: set to HEART_GOLD
+                        try:
+                            self.gold = int(HEART_GOLD)
+                        except Exception:
+                            pass
+            except Exception:
+                # config not available or other issue — ignore
+                pass
             self._render_and_delay(delay_ms)
             """
             if not self.framework.spielfeld.gibt_noch_herzen() and not self.framework._aktion_blockiert:

@@ -1,0 +1,46 @@
+{
+  "tiles": [
+    "wwwwwwwww",
+    "wpwwwwwhw",
+    "wwsssssww",
+    "wwdddddww"
+  ],
+  "settings": {
+    "Held": {
+      "public": true
+    },
+    "Knappe": {
+      "public": true
+    },
+    "Monster": {
+      "public": true
+    },
+    "Herz": {
+      "public": true
+    },
+    "Tuer": {
+      "public": true
+    },
+    "Code": {
+      "public": true
+    },
+    "Villager": {
+      "public": true
+    },
+    "orientations": {
+      "1,1": "right"
+    },
+    "colors": {
+      "2,3": "green",
+      "3,3": "violet",
+      "4,3": "blue",
+      "5,3": "golden",
+      "6,3": "red",
+      "2,2": "green",
+      "3,2": "violet",
+      "4,2": "blue",
+      "5,2": "golden",
+      "6,2": "red"
+    }
+  }
+}

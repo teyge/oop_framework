@@ -1,0 +1,11 @@
+{
+  "tiles": [
+    "www",
+    "wQw",
+    "www"
+  ],
+  "settings": {
+    "initial_gold": 10,
+    "quest_mode": "raetsel"
+  }
+}

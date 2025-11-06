@@ -1,0 +1,51 @@
+{
+  "tiles": [
+    "mbthvvx",
+    "wwwwwww",
+    "kpcddgs",
+    "wwwwwww",
+    "wwwwwww"
+  ],
+  "settings": {
+    "Held": {
+      "public": true
+    },
+    "Knappe": {
+      "public": true
+    },
+    "Monster": {
+      "public": true
+    },
+    "Herz": {
+      "public": true
+    },
+    "Tuer": {
+      "public": true
+    },
+    "Code": {
+      "public": true
+    },
+    "Villager": {
+      "public": true
+    },
+    "colors": {
+      "4,2": "green",
+      "6,2": "green"
+    },
+    "villagers": {
+      "4,0": "female",
+      "5,0": "male"
+    },
+    "victory": {
+      "collect_hearts": false,
+      "move_to": null,
+      "classes_present": true
+    },
+    "initial_gold": 0,
+    "quest_max_kosten": 0,
+    "quest_mode": "items",
+    "quest_items_needed": 1,
+    "use_student_module": false,
+    "student_classes_in_subfolder": true
+  }
+}

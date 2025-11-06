@@ -61,11 +61,32 @@ for path in paths:
 
     rc = proc.returncode
     ok = (rc == 0)
-    print(f"=> {'OK' if ok else f'FAIL (code {rc})'}")
-    results.append((name, ok, rc))
+    # determine expectation: files containing '_expected_fail' are expected to fail
+    expected_ok = ("_expected_fail" not in name)
+    print(f"=> {'OK' if ok else f'FAIL (code {rc})'} (expected: {'OK' if expected_ok else 'FAIL'})")
+    results.append((name, ok, rc, expected_ok))
 
 print("\n--- summary ---")
-for name, ok, code in results:
-    print(name, "OK" if ok else f"FAIL ({code})")
+for name, ok, code, expected_ok in results:
+    status = "OK" if ok else f"FAIL ({code})"
+    expect = "OK" if expected_ok else "FAIL"
+    print(f"{name}: {status} (expected: {expect})")
 
-sys.exit(0 if all(r[1] for r in results) else 2)
+# Report deviations: where actual result differs from expected
+deviations = []
+for name, ok, code, expected_ok in results:
+    if ok != expected_ok:
+        if ok and not expected_ok:
+            deviations.append((name, 'UNEXPECTED_PASS'))
+        elif (not ok) and expected_ok:
+            deviations.append((name, f'UNEXPECTED_FAIL (code {code})'))
+
+if deviations:
+    print("\nDeviations detected:")
+    for name, reason in deviations:
+        print(f" - {name}: {reason}")
+    # return non-zero to indicate mismatch between actual and expected outcomes
+    sys.exit(2)
+else:
+    print("\nAll tests behaved as expected.")
+    sys.exit(0)

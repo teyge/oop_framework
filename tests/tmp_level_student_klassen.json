@@ -1,0 +1,10 @@
+{
+  "tiles": [
+    "www",
+    "wPw",
+    "www"
+  ],
+  "settings": {
+    "import_pfad": "held"
+  }
+}

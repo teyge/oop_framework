@@ -1,5 +1,6 @@
 # framework/framework.py
-import pygame, tkinter as tk
+import pygame
+import tkinter as tk
 from tkinter import filedialog
 from .spielfeld import Spielfeld
 
@@ -113,16 +114,115 @@ class Framework:
 
         panel_x = self.spielfeld.level.breite * self.feldgroesse + 8
         #y = 8
+        # Ensure the Held is always shown first with basic attributes
+        try:
+            sp = getattr(self, 'spielfeld', None)
+        except Exception:
+            sp = None
+
+        if sp:
+            held = getattr(sp, 'held', None)
+            if held:
+                try:
+                    # use requested default name if not set
+                    name = getattr(held, 'name', None) or 'namenloser held'
+                    hdr = self.font.render(f"Name={name}", True, (255,255,255))
+                    self.screen.blit(hdr, (panel_x, y)); y += 20
+                except Exception:
+                    pass
+                try:
+                    # one value per line (like Monster inspector)
+                    x = getattr(held, 'x', 0)
+                    yv = getattr(held, 'y', 0)
+                    richt = getattr(held, 'richtung', '?')
+                    # map directions for display only
+                    dm = {'up': 'N', 'down': 'S', 'left': 'W', 'right': 'O', 'N': 'N', 'S': 'S', 'W': 'W', 'O': 'O'}
+                    rdisp = dm.get(str(richt), str(richt))
+                    x_txt = self.font.render(f"x={x}", True, (200,200,200))
+                    self.screen.blit(x_txt, (panel_x, y)); y += 20
+                    y_txt = self.font.render(f"y={yv}", True, (200,200,200))
+                    self.screen.blit(y_txt, (panel_x, y)); y += 20
+                    r_txt = self.font.render(f"richtung={rdisp}", True, (200,200,200))
+                    self.screen.blit(r_txt, (panel_x, y)); y += 20
+                except Exception:
+                    pass
+                y += 4
+
         for o in self.spielfeld.objekte:
-            for k, v in o.attribute_als_text().items():
-                txt = f"{k}: {v}"
-                
-                while self.font.size(txt)[0] > (self.screen.get_width() - panel_x - 20):
-                    txt = txt[:-1]
-                txt = self.font.render(f"{k}: {v}", True, (240,240,240))
-                self.screen.blit(txt, (panel_x, y)); y += 20
-                
-            y += 10
+            # Defensive inspection: attribute_als_text may raise for student-provided
+            # objects (missing attributes or unexpected behavior). We want to ensure
+            # the Held is always shown (if present) and that errors are surfaced
+            # with a helpful message listing missing attributes.
+            try:
+                try:
+                    items = o.attribute_als_text()
+                except Exception as ex_attr:
+                    # Determine object identity
+                    try:
+                        typ_name = getattr(o, 'typ', None) or o.__class__.__name__
+                    except Exception:
+                        typ_name = o.__class__.__name__
+
+                    # Ensure header is drawn for the object
+                    try:
+                        hdr_txt = f"{getattr(o, 'name', typ_name)} ({typ_name})"
+                        hdr = self.font.render(hdr_txt, True, (255,255,255))
+                        self.screen.blit(hdr, (panel_x, y)); y += 20
+                    except Exception:
+                        pass
+
+                    # Determine a set of likely-required attributes to report
+                    required = ['x', 'y', 'richtung', 'typ', 'name']
+                    missing = []
+                    for a in required:
+                        try:
+                            if not hasattr(o, a):
+                                missing.append(a)
+                        except Exception:
+                            missing.append(a)
+
+                    # If no missing attributes were detected, include the exception text
+                    msg = None
+                    if missing:
+                        msg = f"Fehler in der Schülerklasse {typ_name}: Fehlende Attribute: {', '.join(missing)}"
+                    else:
+                        msg = f"Fehler beim Lesen der Schülerklasse {typ_name}: {ex_attr}"
+
+                    try:
+                        err = self.font.render(msg, True, (255, 100, 100))
+                        self.screen.blit(err, (panel_x, y)); y += 20
+                    except Exception:
+                        pass
+                    # Space after each object
+                    y += 10
+                    # continue to next object
+                    continue
+
+                # Normal path: render each attribute line. Convert 'richtung' to N/O/W/S for display.
+                for k, v in items.items():
+                    try:
+                        val = v
+                        if isinstance(k, str) and 'richt' in k.lower():
+                            dm = {'up': 'N', 'down': 'S', 'left': 'W', 'right': 'O', 'N': 'N', 'S': 'S', 'W': 'W', 'O': 'O'}
+                            val = dm.get(str(v), str(v))
+                        txt = f"{k}: {val}"
+                        while self.font.size(txt)[0] > (self.screen.get_width() - panel_x - 20):
+                            txt = txt[:-1]
+                        txt = self.font.render(f"{k}: {val}", True, (240,240,240))
+                        self.screen.blit(txt, (panel_x, y)); y += 20
+                    except Exception:
+                        continue
+                y += 10
+            except Exception:
+                # Very defensive: if anything else goes wrong, show a minimal line
+                try:
+                    typ_name = getattr(o, 'typ', None) or o.__class__.__name__
+                    msg = f"Fehler beim Anzeigen von {typ_name}"
+                    err = self.font.render(msg, True, (255, 100, 100))
+                    self.screen.blit(err, (panel_x, y)); y += 20
+                except Exception:
+                    pass
+                y += 10
         """        
         if self._sieg:
             msg = self.font.render("Alle Herzen gesammelt!", True, (255, 230, 80))
@@ -262,11 +362,41 @@ class Framework:
                 if event.type == pygame.QUIT:
                     self._running = False
                 elif event.type == pygame.KEYDOWN:
+                    # --- neu: Enter (Return) nimmt alle Gegenstände auf der aktuellen Heldposition auf ---
+                    try:
+                        if event.key == pygame.K_RETURN:
+                            try:
+                                sp = getattr(self, "spielfeld", None)
+                                held = getattr(sp, "held", None) if sp else None
+                                # Prefer a more specific single-item pickup if available
+                                if held:
+                                    if hasattr(held, "nehm_auf_einfach"):
+                                        try:
+                                            held.nehm_auf_einfach()
+                                        except Exception:
+                                            pass
+                                    elif hasattr(held, "nehm_auf_alle"):
+                                        try:
+                                            held.nehm_auf_alle()
+                                        except Exception:
+                                            pass
+                                    elif hasattr(held, "nehme_auf_alle"):
+                                        try:
+                                            held.nehme_auf_alle()
+                                        except Exception:
+                                            pass
+                            except Exception:
+                                pass
+                            # continue to allow other handlers to run too
+                    except Exception:
+                        pass
+
+                    # bestehende Tasten-Registrierung aufrufen (wie bisher)
                     fn = self._tasten.get(event.key)
                     if fn:
                         try:
                             self._aus_tastatur = True
-                            fn()  # Tastatur bleibt aktiv, auch wenn blockiert
+                            fn()
                         except Exception as e:
                             print("Fehler in Tastenaktion:", e)
                         finally:
@@ -275,10 +405,14 @@ class Framework:
                     self.info_scroll += event.y * 20
                     if self.info_scroll < 0:
                         self.info_scroll = 0
-
-            # Sieg erkennen (wie vorher)
-            if not self._aktion_blockiert and not self.spielfeld.gibt_noch_herzen():
-                self.sieg()
+            # Sieg erkennen (kombinierte Bedingungen)
+            try:
+                if not self._aktion_blockiert and getattr(self, 'spielfeld', None) and self.spielfeld.check_victory():
+                    self.sieg()
+            except Exception:
+                # fallback to legacy hearts-only check
+                if not self._aktion_blockiert and not self.spielfeld.gibt_noch_herzen():
+                    self.sieg()
 
             # Wenn im Testmodus: beende Prozess bei Sieg oder bei Timeout
             if TEST_MODE:
@@ -295,8 +429,138 @@ class Framework:
                     pygame.quit()
                     sys.exit(2)
 
+            # --- Render: Objekt-Inspektor (rechte Seite) erweitern um Inventaranzeige ---
+            try:
+                # existierender inspector-render-code befindet sich irgendwo in _render_frame oder hier;
+                # füge das Inventar-Rendering direkt an der Stelle ein, an der held/knappe/monster angezeigt werden.
+                # defensive search for inspector surface / font
+                screen = getattr(self, "_screen", None) or pygame.display.get_surface()
+                if screen:
+                    font = pygame.font.SysFont(None, 20)
+                    x0 = screen.get_width() - 200  # rechter Bereich
+                    y0 = 20
+                    line_h = 20
+
+                    sp = getattr(self, "spielfeld", None)
+                    if sp:
+                        # Reihenfolge: Held, Knappe, dann Monster(s)
+                        entities = []
+                        if getattr(sp, "held", None):
+                            entities.append(sp.held)
+                        if getattr(sp, "knappe", None):
+                            entities.append(sp.knappe)
+                        # append monsters
+                        for o in sp.objekte:
+                            try:
+                                typ = getattr(o, "typ", "") or getattr(o, "name", "")
+                                if typ and "monster" in str(typ).lower():
+                                    entities.append(o)
+                            except Exception:
+                                continue
+
+                        # Zeichne Basisinfos + Inventar
+                        for ent in entities:
+                            try:
+                                # header: Name (Typ)
+                                name = getattr(ent, "name", getattr(ent, "typ", ent.__class__.__name__))
+                                hdr = font.render(f"{name} ({getattr(ent,'typ', '')})", True, (255,255,255))
+                                screen.blit(hdr, (x0, y0))
+                                y0 += line_h
+                                # position + richtung (one per line, direction displayed as N/O/W/S)
+                                try:
+                                    ex = getattr(ent, 'x', 0)
+                                    ey = getattr(ent, 'y', 0)
+                                    er = getattr(ent, 'richtung', '?')
+                                    dm = {'up': 'N', 'down': 'S', 'left': 'W', 'right': 'O', 'N': 'N', 'S': 'S', 'W': 'W', 'O': 'O'}
+                                    rdisp = dm.get(str(er), str(er))
+                                    sx = font.render(f"x={ex}", True, (200,200,200))
+                                    screen.blit(sx, (x0, y0)); y0 += line_h
+                                    sy = font.render(f"y={ey}", True, (200,200,200))
+                                    screen.blit(sy, (x0, y0)); y0 += line_h
+                                    sr = font.render(f"richtung={rdisp}", True, (200,200,200))
+                                    screen.blit(sr, (x0, y0)); y0 += line_h
+                                except Exception:
+                                    try:
+                                        xyt = font.render(f"x={getattr(ent,'x',0)} y={getattr(ent,'y',0)} dir={getattr(ent,'richtung','?')}", True, (200,200,200))
+                                        screen.blit(xyt, (x0, y0)); y0 += line_h
+                                    except Exception:
+                                        y0 += line_h
+
+                                # Spells / gesammelte Sprueche: falls vorhanden als Text (bestehendes Verhalten)
+                                spells = getattr(ent, "spruch", None) or getattr(ent, "zauberspruch", None) or getattr(ent, "_spruch", None)
+                                if spells:
+                                    srf = font.render(f"Spruch: {spells}", True, (180,220,180))
+                                    screen.blit(srf, (x0, y0))
+                                    y0 += line_h
+
+                                # Inventar: falls vorhanden, zeichne sehr kleine Icons für Schlüssel (einmal pro Farbe)
+                                inv = getattr(ent, "inventar", None)
+                                if inv is not None:
+                                    # collect unique key colors and generic item names
+                                    keys_seen = {}
+                                    item_x = x0
+                                    item_y = y0
+                                    icon_size = 16  # very small
+                                    spacing = icon_size + 4
+                                    # draw small label
+                                    lbl = font.render("Inventar:", True, (220,220,160))
+                                    screen.blit(lbl, (item_x, item_y))
+                                    item_y += line_h
+                                    # draw icons in a row
+                                    ix = 0
+                                    for it in inv:
+                                        try:
+                                            # if it's a key item (has attribute 'farbe' or class name Schluessel)
+                                            color = getattr(it, "farbe", None) or getattr(it, "color", None)
+                                            if color:
+                                                if color in keys_seen:
+                                                    continue
+                                                keys_seen[color] = True
+                                                # try to load sprite path or construct key sprite filename
+                                                surf = None
+                                                try:
+                                                    # if item has 'bild' surface use it
+                                                    if hasattr(it, "bild") and getattr(it, "bild", None) is not None:
+                                                        surf = it.bild
+                                                    else:
+                                                        # try to locate sprite on disk
+                                                        import os, pygame as _pg
+                                                        cand = os.path.join("sprites", f"key_{color}.png")
+                                                        if os.path.exists(cand):
+                                                            surf = _pg.image.load(cand).convert_alpha()
+                                                except Exception:
+                                                    surf = None
+                                                # if we have a surface, scale and blit
+                                                if surf:
+                                                    try:
+                                                        surf_small = pygame.transform.smoothscale(surf, (icon_size, icon_size))
+                                                        screen.blit(surf_small, (x0 + ix * spacing, item_y))
+                                                    except Exception:
+                                                        # fallback draw small rect
+                                                        pygame.draw.rect(screen, (200,200,0), (x0 + ix * spacing, item_y, icon_size, icon_size))
+                                                else:
+                                                    pygame.draw.rect(screen, (200,200,0), (x0 + ix * spacing, item_y, icon_size, icon_size))
+                                                ix += 1
+                                            else:
+                                                # non-key item: draw short name
+                                                nm = getattr(it, "name", str(it))
+                                                s = font.render(nm, True, (200,200,200))
+                                                screen.blit(s, (x0 + ix * spacing, item_y))
+                                                ix += 1
+                                            # keep row compact
+                                            if ix >= 10:
+                                                # move to next row
+                                                ix = 0
+                                                item_y += icon_size + 6
+                                        except Exception:
+                                            continue
+                                    # advance y0 after inventory rendering
+                                    y0 = item_y + icon_size + 6
+                            except Exception:
+                                continue
+            except Exception:
+                pass
+
             self._render_frame()
             clock.tick(60)
-
-        pygame.quit()
 

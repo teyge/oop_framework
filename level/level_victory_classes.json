@@ -1,0 +1,14 @@
+{
+  "tiles": [
+    "wpw",
+    "xw ",
+    "www"
+  ],
+  "settings": {
+    "victory": {
+      "collect_hearts": false,
+      "move_to": null,
+      "classes_present": true
+    }
+  }
+}
