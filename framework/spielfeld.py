@@ -1510,17 +1510,17 @@ class Spielfeld:
                                 tb = traceback.format_exc()
                                 msg = f"Fehler beim Zeichnen des Objekts {typ} ({name}) an Position {pos}\n\n{tb}"
 
-                                def _popup(text):
-                                    try:
-                                        root = _tk.Tk()
-                                        root.withdraw()
-                                        _tk_messagebox.showerror("Objektfehler", text)
-                                        root.destroy()
-                                    except Exception:
-                                        pass
-
-                                th = threading.Thread(target=_popup, args=(msg,), daemon=True)
-                                th.start()
+                                # Avoid showing a Tkinter popup from a background
+                                # thread (this is not thread-safe and can make the
+                                # application window unresponsive on some platforms).
+                                # Instead, log the error to the console so it can be
+                                # inspected by developers; the in-game visual marker
+                                # already indicates a broken object.
+                                try:
+                                    print("[ERROR] Objektfehler:")
+                                    print(msg)
+                                except Exception:
+                                    pass
                         except Exception:
                             pass
                     except Exception:

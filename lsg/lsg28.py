@@ -29,23 +29,17 @@ class Held:
 
 
 from framework.grundlage import level
-level.lade(29, weiblich=False)
+level.lade(28, weiblich=False)
 from framework.grundlage import *
 
-key_color = ""
 
-
-x = 1
-while key_color != "golden":
-    key = level.gib_objekt_bei(x,3)
-    key_color = key.gib_farbe()
-    x+=1
-
+key = level.gib_objekt_bei(3,3)
 tuer = held.gib_objekt_vor_dir()
 tuer.verwende_schluessel(key)
 held.geh()
 held.geh()
 held.nimm_herz()
+
 
 
 """
