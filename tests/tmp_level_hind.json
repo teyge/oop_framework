@@ -1,0 +1,10 @@
+{
+  "tiles": [
+    "www",
+    "wtw",
+    "www"
+  ],
+  "settings": {
+    "Hindernis": { "public": false }
+  }
+}

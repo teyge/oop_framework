@@ -1,0 +1,17 @@
+{
+  "tiles": [
+    "wwww",
+    "wpww",
+    "wwww",
+    "wwww"
+  ],
+  "settings": {
+    "victory": {
+      "collect_hearts": false,
+      "move_to": null,
+      "classes_present": true
+    },
+    "use_student_module": true,
+    "student_classes_in_subfolder": true
+  }
+}

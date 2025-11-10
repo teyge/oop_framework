@@ -649,16 +649,107 @@ class MetaHeld(Held):
             setattr(student_obj, 'meta', self)
         except Exception:
             pass
-        try:
-            setattr(student_obj, 'x', x)
-            setattr(student_obj, 'y', y)
-            setattr(student_obj, 'richtung', richtung)
-        except Exception:
-            pass
+        # Do NOT proactively set x/y/richtung on the student object here.
+        # If the student explicitly provides these attributes, they remain.
+        # The framework will not create attributes on the student to avoid
+        # masking incomplete implementations.
         try:
             self.aktiviere_steuerung()
         except Exception:
             pass
+
+    def aktiviere_steuerung(self):
+        """Register controls that prefer student-provided methods when available.
+        After calling a student method we sync student's x/y/richtung back to the MetaHeld.
+        """
+        try:
+            stud = object.__getattribute__(self, '_student')
+        except Exception:
+            stud = None
+
+        def call_student(method_name, *args):
+            def _inner():
+                try:
+                    if stud is not None and hasattr(stud, method_name) and callable(getattr(stud, method_name)):
+                        fn = getattr(stud, method_name)
+                        try:
+                            fn(*args)
+                        except TypeError:
+                            try:
+                                fn()
+                            except Exception:
+                                pass
+                    else:
+                        # If the student object does not provide the requested
+                        # movement methods, DO NOT fall back to the framework's
+                        # implementation — that would allow bypassing the
+                        # exercise. For movement-related methods, block the
+                        # action and show a hint; for other actions (like
+                        # pick-up/attack), falling back to framework behavior is
+                        # acceptable to keep levels playable.
+                        movement_methods = ('links', 'rechts', 'geh', 'zurueck')
+                        if method_name in movement_methods:
+                            try:
+                                # Treat as invalid action when invoked programmatically
+                                # (framework will block non-keyboard calls as appropriate).
+                                self._ungueltige_aktion("Schülerklasse hat keine Bewegungsmethode")
+                            except Exception:
+                                pass
+                        else:
+                            m = getattr(self, method_name, None)
+                            if callable(m):
+                                try:
+                                    m(*args)
+                                except TypeError:
+                                    try:
+                                        m()
+                                    except Exception:
+                                        pass
+                finally:
+                    # sync position/direction from student -> meta if student updated them
+                    try:
+                        if stud is not None:
+                            for a in ('x','y','richtung'):
+                                if hasattr(stud, a):
+                                    try:
+                                        object.__setattr__(self, a, getattr(stud, a))
+                                    except Exception:
+                                        pass
+                    except Exception:
+                        pass
+                    # Ensure the MetaHeld's sprite reflects the (possibly new) direction
+                    try:
+                        # Only update directional sprite for MetaHeld (student-wrapped)
+                        if hasattr(self, '_update_sprite_richtung'):
+                            try:
+                                self._update_sprite_richtung()
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+            return _inner
+
+        try:
+            # movement keys
+            self.framework.taste_registrieren(pygame.K_LEFT,  call_student('links', 0))
+            self.framework.taste_registrieren(pygame.K_RIGHT, call_student('rechts', 0))
+            self.framework.taste_registrieren(pygame.K_UP,    call_student('geh', 0))
+            self.framework.taste_registrieren(pygame.K_DOWN,  call_student('zurueck', 0))
+            # Enter: pick up a single relevant object (heart, key or spruch)
+            self.framework.taste_registrieren(pygame.K_RETURN, call_student('nehm_auf_einfach'))
+            # Space: attack
+            self.framework.taste_registrieren(pygame.K_SPACE, call_student('attack'))
+            # C: only pick up a spruch/code on current tile
+            self.framework.taste_registrieren(pygame.K_c, call_student('lese_spruch'))
+            # F: try to open a Tor in front (open only)
+            self.framework.taste_registrieren(pygame.K_f, call_student('oeffne_tor_vor'))
+            # V: try to open a Tür in front: prefer spruch, else try keys
+            self.framework.taste_registrieren(pygame.K_v, call_student('oeffne_tuer_vor'))
+        except Exception:
+            try:
+                super().aktiviere_steuerung()
+            except Exception:
+                pass
 
     def __getattr__(self, name):
         stud = object.__getattribute__(self, '_student')
@@ -671,7 +762,14 @@ class MetaHeld(Held):
             object.__setattr__(self, name, value)
             try:
                 stud = object.__getattribute__(self, '_student')
-                setattr(stud, name, value)
+                # Only propagate to the student object if the student already
+                # defines this attribute; do not create new attributes on the
+                # student object that weren't present before.
+                if hasattr(stud, name):
+                    try:
+                        setattr(stud, name, value)
+                    except Exception:
+                        pass
             except Exception:
                 pass
             return
@@ -681,4 +779,64 @@ class MetaHeld(Held):
             setattr(stud, name, value)
         except Exception:
             pass
+
+    def update(self):
+        """Framework-controlled update for MetaHeld.
+
+        Ensure the student object stays in sync with the MetaHeld's authoritative
+        position/direction values. Do NOT call any student-provided update() so
+        the framework remains responsible for movement and rendering.
+        """
+        try:
+            stud = object.__getattribute__(self, '_student')
+        except Exception:
+            stud = None
+        if stud is None:
+            return
+        for a in ('x', 'y', 'richtung'):
+            try:
+                # propagate only to already-existing student attributes
+                if hasattr(stud, a):
+                    setattr(stud, a, getattr(self, a))
+            except Exception:
+                pass
+
+    def zeichne(self, screen, feldgroesse):
+        """Draw the MetaHeld. Prefer a student-provided zeichne(); otherwise
+        use the framework sprite but rotate it according to direction so
+        student direction changes immediately reflect visually.
+        """
+        try:
+            stud = object.__getattribute__(self, '_student')
+        except Exception:
+            stud = None
+        # If student provided a custom zeichne(), prefer it
+        try:
+            if stud is not None and hasattr(stud, 'zeichne') and callable(getattr(stud, 'zeichne')):
+                try:
+                    stud.zeichne(screen, feldgroesse)
+                    return
+                except Exception:
+                    # fall through to framework drawing
+                    pass
+        except Exception:
+            pass
+
+        # Framework fallback: ensure directional sprite loaded if available
+        try:
+            try:
+                self._update_sprite_richtung()
+            except Exception:
+                pass
+            surf = getattr(self, 'bild', None)
+            if surf is None:
+                # nothing to draw
+                return
+            img = pygame.transform.scale(surf, (feldgroesse, feldgroesse))
+            # Do not rotate the sprite at runtime; rely on per-direction
+            # sprite files loaded by _update_sprite_richtung() instead.
+            screen.blit(img, (int(self.x) * feldgroesse, int(self.y) * feldgroesse))
+            return
+        except Exception:
+            return
 

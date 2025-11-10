@@ -12,6 +12,9 @@ TILE_SPRITES = {
     "d": "sprites/tuer.png"
 }
 
+# Bogenschuetze (archer) variant
+TILE_SPRITES.setdefault("y", "sprites/archer.png")
+
 class Level:
     def __init__(self, dateipfad):
         if not os.path.exists(dateipfad):
@@ -51,7 +54,7 @@ class Level:
             for x, code in enumerate(zeile):
                 # Entities: p=player, h=herz, x=monster, c=code, d=tuer, g=tor, k=knappe,
                 # s=schluessel, v=villager, q=questgeber
-                if code.lower() in ("p", "h", "x", "c", "d", "g", "k", "s", "v", "q"):
+                if code.lower() in ("p", "h", "x", "y", "c", "d", "g", "k", "s", "v", "q"):
                     # Unter Entities soll Gras liegen
                     self.tiles[y][x] = "w"
                     # bestimme Typ und Sichtbarkeit (Großbuchstabe = direkt verfügbar)

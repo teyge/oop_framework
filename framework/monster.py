@@ -194,3 +194,138 @@ class Monster(Objekt):
         except Exception:
             pass
         self._update_sprite_richtung()
+
+
+class Bogenschuetze(Monster):
+    """Ranged attacker: fires a fast arrow (rendered as a brown line)
+    along its facing direction. The arrow travels quickly to the first
+    visible target (Held, Knappe, Monster) and only travels while the
+    line-of-sight isn't blocked by non-passierbare objects (doors, hindernisse).
+    """
+    def __init__(self, x, y, richtung="down", sprite_pfad="sprites/archer.png", name="Bogenschütze"):
+        super().__init__(x=x, y=y, richtung=richtung, sprite_pfad=sprite_pfad, name=name)
+        # shorter attack duration for ranged animation
+        self.angriff_dauer = 300
+
+    def links(self):
+        print("Der Bogenschütze ist zu konzentriert, um sich zu drehen.")
+
+    def geh(self):
+        print("Der Bogenschütze ist zu konzentriert, um sich zu bewegen.")
+
+    def rechts(self):
+        print("Der Bogenschütze ist zu konzentriert, um sich zu drehen.")
+
+    def zurueck(self, delay_ms=500):
+        print("Der Bogenschütze ist zu konzentriert, um sich zu bewegen.")
+
+    def setze_richtung(self,r):
+        print("Der Bogenschütze ist zu konzentriert, um sich zu drehen.")
+
+    def setze_position(self,x,y):
+        print("Der Bogenschütze ist zu konzentriert, um sich zu bewegen.")
+
+    
+
+    def update(self):
+        # If dead or framework missing, nothing to do
+        if self.tot or not self.framework:
+            return
+
+        jetzt = pygame.time.get_ticks()
+
+        # If currently in attack animation window, wait until finished
+        if self.angriff_start:
+            if jetzt - self.angriff_start >= self.angriff_dauer:
+                # restore normal sprite
+                self.bild = self.bild_normal
+                self.angriff_start = None
+            return
+
+        # Walk the line of sight in facing direction until blocked
+        dx, dy = richtung_offset(self.richtung)
+        tx, ty = self.x + dx, self.y + dy
+        sp = getattr(self.framework, 'spielfeld', None)
+        if not sp:
+            return
+
+        while 0 <= tx < sp.level.breite and 0 <= ty < sp.level.hoehe:
+            # First, check for blocking terrain (trees, bushes, mountains)
+            try:
+                terrain = sp.terrain_art_an(tx, ty)
+                if terrain and terrain != 'Weg':
+                    # terrain blocks sight
+                    break
+            except Exception:
+                pass
+
+            # Check for an object at (tx,ty)
+            try:
+                o = sp.objekt_an(tx, ty)
+            except Exception:
+                o = None
+
+            if o is not None and o is not self:
+                # If object explicitly provides ist_passierbar and it's False => blocks sight
+                try:
+                    if hasattr(o, 'ist_passierbar'):
+                        try:
+                            if not bool(o.ist_passierbar()):
+                                break
+                        except Exception:
+                            # if checking fails, conservatively treat as blocking
+                            break
+                except Exception:
+                    pass
+
+                # If the object is a valid victim (Held, Knappe, Monster), shoot
+                try:
+                    ttyp = (getattr(o, 'typ', '') or '').lower()
+                except Exception:
+                    ttyp = ''
+
+                # don't target already KO'd victims
+                try:
+                    is_dead = bool(getattr(o, 'tot', False))
+                except Exception:
+                    is_dead = False
+                if ttyp in ('held', 'knappe', 'monster') and not is_dead:
+                    # Create projectile: determine pixel centers
+                    try:
+                        fw = self.framework
+                        if not hasattr(fw, '_projectiles'):
+                            fw._projectiles = []
+                        # attacker center
+                        start_px = (self.x * fw.feldgroesse + fw.feldgroesse // 2, self.y * fw.feldgroesse + fw.feldgroesse // 2)
+                        end_px = (o.x * fw.feldgroesse + fw.feldgroesse // 2, o.y * fw.feldgroesse + fw.feldgroesse // 2)
+                        proj = {
+                            'start': start_px,
+                            'end': end_px,
+                            'start_time': jetzt,
+                            'duration': 200,
+                            'attacker': self,
+                            'victim': o,
+                        }
+                        fw._projectiles.append(proj)
+                    except Exception:
+                        pass
+
+                    # set attack visual on archer immediately (frames may be handled by angriff())
+                    try:
+                        base = os.path.splitext(self.sprite_pfad)[0]
+                        att_pfad = f"{base}_att.png"
+                        if os.path.exists(att_pfad):
+                            try:
+                                self.bild = pygame.image.load(att_pfad).convert_alpha()
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+
+                    # mark attack start to prevent immediate repeat
+                    self.angriff_start = jetzt
+                    return
+
+            # step further along line
+            tx += dx
+            ty += dy

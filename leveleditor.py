@@ -111,6 +111,8 @@ class LevelEditor:
 
         # Sprites
         self.sprites = self._load_all_sprites()
+        # Monster variant index (0 = default Monster 'x', 1 = Bogenschuetze 'y')
+        self.monster_variant_idx = 0
 
         # Fenster
         self._recalc_window()
@@ -123,7 +125,9 @@ class LevelEditor:
         # Privatisierungs-Flags (F1-Menü)
         self.privacy_flags = {
             "Held": False, "Knappe": False, "Monster": False,
-            "Herz": False, "Tuer": False, "Code": False, "Villager": False
+            "Herz": False, "Tuer": False, "Code": False, "Villager": False,
+            # Hindernisse (Baum/Busch/Berg) können privat gesetzt werden
+            "Hindernis": False
         }
         # Orientierungen pro Koordinate als dict "x,y" -> "up|right|down|left"
         self.orientations = {}
@@ -140,6 +144,10 @@ class LevelEditor:
         sprites = {}
         for key, (code, path) in TILES.items():
             sprites[code] = self._load_sprite(path)
+
+        # Bogenschuetze (variant of Monster) — optional sprite, fallbacks handled
+        # use code 'y' internally to represent a placed Bogenschuetze
+        sprites["y"] = self._load_sprite("sprites/archer.png")
 
         # Knappe & evtl. weitere
         sprites["k"] = self._load_sprite("sprites/knappe.png")
@@ -354,6 +362,8 @@ class LevelEditor:
                 txt = f"[2]  →  't'/'m'/'b' (zyklisch)"
             elif key == "6":
                 txt = f"[6]  →  'p'/'k' (toggle Held/Knappe)"
+            elif key == "5":
+                txt = f"[5]  →  'x'/'y' (Monster / Bogenschuetze - cycle)"
             else:
                 txt = f"[{key}]  →  '{code}'"
             self._text(self.small, txt, (230, 230, 230), x0 + 10, y)
@@ -643,8 +653,8 @@ class LevelEditor:
                 self.privacy_flags = {}
 
             # Ensure expected keys exist
-            for k in ["Held", "Knappe", "Monster", "Herz", "Tuer", "Code", "Villager"]:
-                self.privacy_flags.setdefault(k, False)
+        for k in ["Held", "Knappe", "Monster", "Herz", "Tuer", "Code", "Villager", "Hindernis"]:
+            self.privacy_flags.setdefault(k, False)
         # Lade Orientierungen, falls vorhanden (Format: {"x,y": "up"})
         settings = data.get("settings", {})
         self.orientations = settings.get("orientations", {})
@@ -820,6 +830,23 @@ class LevelEditor:
             self._toggle_held_knappe = not self._toggle_held_knappe
             self.selected_code = "p" if self._toggle_held_knappe else "k"
             print("[Info] Auswahl:", "Held ('p')" if self._toggle_held_knappe else "Knappe ('k')")
+            return
+
+        # Monster variants (Taste '5'): cycle between default Monster ('x') and Bogenschuetze ('y')
+        if key_str == "5":
+            try:
+                self.monster_variant_idx = (getattr(self, 'monster_variant_idx', 0) + 1) % 2
+            except Exception:
+                self.monster_variant_idx = 0
+            # map index to code
+            self.selected_code = 'x' if self.monster_variant_idx == 0 else 'y'
+            # ensure sprite loaded
+            if self.selected_code not in self.sprites:
+                if self.selected_code == 'x':
+                    self.sprites['x'] = self._load_sprite('sprites/monster.png')
+                else:
+                    self.sprites['y'] = self._load_sprite('sprites/archer.png')
+            print(f"[Info] Monster-Variante: {'Monster' if self.selected_code=='x' else 'Bogenschuetze'}")
             return
 
         # Standardtiles

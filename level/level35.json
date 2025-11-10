@@ -1,0 +1,45 @@
+{
+  "tiles": [
+    "mbtw",
+    "kpww",
+    "wwww",
+    "wwww"
+  ],
+  "settings": {
+    "Held": {
+      "public": true
+    },
+    "Knappe": {
+      "public": true
+    },
+    "Monster": {
+      "public": true
+    },
+    "Herz": {
+      "public": true
+    },
+    "Tuer": {
+      "public": true
+    },
+    "Code": {
+      "public": true
+    },
+    "Villager": {
+      "public": true
+    },
+    "Hindernis": {
+      "public": true
+    },
+    "victory": {
+      "collect_hearts": true,
+      "move_to": null,
+      "classes_present": false
+    },
+    "initial_gold": 0,
+    "quest_mode": "items",
+    "quest_max_kosten": 0,
+    "quest_items_needed": 1,
+    "use_student_module": false,
+    "student_classes_in_subfolder": true
+  }
+}

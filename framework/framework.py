@@ -17,6 +17,8 @@ class Framework:
         self._aus_tastatur = False
         self.weiblich = w
         self.info_scroll = 0  # Scroll-Offset für Infotext
+        # transient projectiles (arrows) created by ranged attackers
+        self._projectiles = []
 
 
 
@@ -96,11 +98,76 @@ class Framework:
     
     def objekt_hinzufuegen(self, obj):
         """Fügt ein Objekt dem Spielfeld hinzu und verknüpft es mit dem Framework."""
-        obj.framework = self
-        self.spielfeld.objekte.append(obj)
-        self._render_frame()
-        if obj.typ == "Knappe":
-            self.spielfeld.knappe = obj
+        # Decide whether the caller is student code (schueler / klassen / other)
+        try:
+            import sys as _sys
+            frm = _sys._getframe(1)
+            caller_mod = frm.f_globals.get('__name__', '')
+        except Exception:
+            caller_mod = ''
+
+        is_student_caller = False
+        try:
+            if isinstance(caller_mod, str):
+                if caller_mod == 'schueler' or caller_mod.startswith('klassen.'):
+                    is_student_caller = True
+                # treat any non-framework caller as student code for this API
+                elif not (caller_mod == 'framework' or caller_mod.startswith('framework.')):
+                    is_student_caller = True
+        except Exception:
+            is_student_caller = False
+
+        # If the call originates from student code, accept the passed object as-is
+        # (this allows students to instantiate framework classes themselves and
+        # add them). Otherwise, default behaviour applies.
+        try:
+            obj.framework = self
+        except Exception:
+            pass
+
+        try:
+            # append to spielfeld list
+            self.spielfeld.objekte.append(obj)
+        except Exception:
+            # fallback: try to ensure list exists
+            try:
+                if not hasattr(self.spielfeld, 'objekte'):
+                    self.spielfeld.objekte = []
+                self.spielfeld.objekte.append(obj)
+            except Exception:
+                pass
+
+        # If a Held was added, ensure spielfeld.held references it and controls are active
+        try:
+            if getattr(obj, 'typ', None) == 'Held' or obj.__class__.__name__ == 'Held':
+                try:
+                    self.spielfeld.held = obj
+                except Exception:
+                    pass
+                try:
+                    # If the object exposes an aktiviere_steuerung method, call it
+                    if hasattr(obj, 'aktiviere_steuerung') and callable(getattr(obj, 'aktiviere_steuerung')):
+                        try:
+                            obj.aktiviere_steuerung()
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+
+        except Exception:
+            pass
+
+        # Knappe shortcut
+        try:
+            if getattr(obj, 'typ', None) == "Knappe":
+                self.spielfeld.knappe = obj
+        except Exception:
+            pass
+
+        try:
+            self._render_frame()
+        except Exception:
+            pass
         
     def gib_objekt_an(self, x, y):
         """Gibt das Objekt an Position (x, y) zurück oder None."""
@@ -124,18 +191,101 @@ class Framework:
             held = getattr(sp, 'held', None)
             if held:
                 try:
-                    # use requested default name if not set
-                    name = getattr(held, 'name', None) or 'namenloser held'
+                    # If this is a MetaHeld wrapping a student object, only show
+                    # attributes that the student actually provided (hasattr).
+                    stud = getattr(held, '_student', None)
+                except Exception:
+                    stud = None
+
+                if stud is not None:
+                    try:
+                        # name only if student provided it
+                        if hasattr(stud, 'name'):
+                            name = getattr(stud, 'name')
+                            hdr = self.font.render(f"Name={name}", True, (255,255,255))
+                            self.screen.blit(hdr, (panel_x, y)); y += 20
+                    except Exception:
+                        pass
+                    try:
+                        # show only attributes present on the student object
+                        dm = {'up': 'N', 'down': 'S', 'left': 'W', 'right': 'O', 'N': 'N', 'S': 'S', 'W': 'W', 'O': 'O'}
+                        if hasattr(stud, 'x'):
+                            x_val = getattr(stud, 'x')
+                            x_txt = self.font.render(f"x={x_val}", True, (200,200,200))
+                            self.screen.blit(x_txt, (panel_x, y)); y += 20
+                        if hasattr(stud, 'y'):
+                            y_val = getattr(stud, 'y')
+                            y_txt = self.font.render(f"y={y_val}", True, (200,200,200))
+                            self.screen.blit(y_txt, (panel_x, y)); y += 20
+                        if hasattr(stud, 'richtung'):
+                            r = getattr(stud, 'richtung')
+                            rdisp = dm.get(str(r), str(r))
+                            r_txt = self.font.render(f"richtung={rdisp}", True, (200,200,200))
+                            self.screen.blit(r_txt, (panel_x, y)); y += 20
+                    except Exception:
+                        pass
+                    y += 4
+                # separator after Held (visual separation)
+                try:
+                    pygame.draw.line(self.screen, (120,120,120), (panel_x, y+6), (self.screen.get_width()-8, y+6), 1)
+                    y += 10
+                except Exception:
+                    pass
+
+                # Only draw the default-held block when there is no student object
+                # (when we showed student-provided attributes above we must not
+                # repeat the generic Held display -- this previously caused the
+                # hero to appear twice in the inspector).
+                if stud is None:
+                    try:
+                        # use requested default name if not set
+                        name = getattr(held, 'name', None) or 'namenloser held'
+                        hdr = self.font.render(f"Name={name}", True, (255,255,255))
+                        self.screen.blit(hdr, (panel_x, y)); y += 20
+                    except Exception:
+                        pass
+                    try:
+                        # one value per line (like Monster inspector)
+                        x = getattr(held, 'x', 0)
+                        yv = getattr(held, 'y', 0)
+                        richt = getattr(held, 'richtung', '?')
+                        # map directions for display only
+                        dm = {'up': 'N', 'down': 'S', 'left': 'W', 'right': 'O', 'N': 'N', 'S': 'S', 'W': 'W', 'O': 'O'}
+                        rdisp = dm.get(str(richt), str(richt))
+                        x_txt = self.font.render(f"x={x}", True, (200,200,200))
+                        self.screen.blit(x_txt, (panel_x, y)); y += 20
+                        y_txt = self.font.render(f"y={yv}", True, (200,200,200))
+                        self.screen.blit(y_txt, (panel_x, y)); y += 20
+                        r_txt = self.font.render(f"richtung={rdisp}", True, (200,200,200))
+                        self.screen.blit(r_txt, (panel_x, y)); y += 20
+                    except Exception:
+                        pass
+                    y += 4
+
+        # Show Knappe next, then Monsters, then remaining objects. Use separators
+        # between these groups and avoid large vertical gaps (separators replace heavy spacing).
+        try:
+            # small helper to draw a horizontal separator
+            def draw_sep(ypos):
+                try:
+                    pygame.draw.line(self.screen, (100,100,100), (panel_x, ypos+6), (self.screen.get_width()-8, ypos+6), 1)
+                except Exception:
+                    pass
+
+            # Draw Knappe (if present) as a distinct block after Held
+            kn = getattr(sp, 'knappe', None)
+            if kn is not None:
+                try:
+                    # header
+                    name = getattr(kn, 'name', None) or 'namenloser knappe'
                     hdr = self.font.render(f"Name={name}", True, (255,255,255))
                     self.screen.blit(hdr, (panel_x, y)); y += 20
                 except Exception:
                     pass
                 try:
-                    # one value per line (like Monster inspector)
-                    x = getattr(held, 'x', 0)
-                    yv = getattr(held, 'y', 0)
-                    richt = getattr(held, 'richtung', '?')
-                    # map directions for display only
+                    x = getattr(kn, 'x', 0)
+                    yv = getattr(kn, 'y', 0)
+                    richt = getattr(kn, 'richtung', '?')
                     dm = {'up': 'N', 'down': 'S', 'left': 'W', 'right': 'O', 'N': 'N', 'S': 'S', 'W': 'W', 'O': 'O'}
                     rdisp = dm.get(str(richt), str(richt))
                     x_txt = self.font.render(f"x={x}", True, (200,200,200))
@@ -146,82 +296,117 @@ class Framework:
                     self.screen.blit(r_txt, (panel_x, y)); y += 20
                 except Exception:
                     pass
-                y += 4
+                # separator after knappe
+                draw_sep(y); y += 10
 
-        for o in self.spielfeld.objekte:
-            # Defensive inspection: attribute_als_text may raise for student-provided
-            # objects (missing attributes or unexpected behavior). We want to ensure
-            # the Held is always shown (if present) and that errors are surfaced
-            # with a helpful message listing missing attributes.
-            try:
+            # Monsters: render each with a separator between
+            monsters = [o for o in self.spielfeld.objekte if getattr(o, 'typ', None) == 'Monster']
+            for m in monsters:
                 try:
-                    items = o.attribute_als_text()
+                    name = getattr(m, 'name', None) or 'Monster'
+                    hdr = self.font.render(f"{name} (Monster)", True, (255,255,255))
+                    self.screen.blit(hdr, (panel_x, y)); y += 20
+                except Exception:
+                    pass
+                try:
+                    items = m.attribute_als_text()
+                    for k, v in items.items():
+                        try:
+                            val = v
+                            if isinstance(k, str) and 'richt' in k.lower():
+                                dm = {'up': 'N', 'down': 'S', 'left': 'W', 'right': 'O', 'N': 'N', 'S': 'S', 'W': 'W', 'O': 'O'}
+                                val = dm.get(str(v), str(v))
+                            txt = f"{k}: {val}"
+                            while self.font.size(txt)[0] > (self.screen.get_width() - panel_x - 20):
+                                txt = txt[:-1]
+                            txt = self.font.render(f"{k}: {val}", True, (240,240,240))
+                            self.screen.blit(txt, (panel_x, y)); y += 20
+                        except Exception:
+                            continue
                 except Exception as ex_attr:
-                    # Determine object identity
                     try:
-                        typ_name = getattr(o, 'typ', None) or o.__class__.__name__
-                    except Exception:
-                        typ_name = o.__class__.__name__
-
-                    # Ensure header is drawn for the object
-                    try:
-                        hdr_txt = f"{getattr(o, 'name', typ_name)} ({typ_name})"
-                        hdr = self.font.render(hdr_txt, True, (255,255,255))
-                        self.screen.blit(hdr, (panel_x, y)); y += 20
+                        msg = f"Fehler in der Schülerklasse Monster: {ex_attr}"
+                        err = self.font.render(msg, True, (255,100,100))
+                        self.screen.blit(err, (panel_x, y)); y += 20
                     except Exception:
                         pass
+                # separator between monsters
+                draw_sep(y); y += 8
 
-                    # Determine a set of likely-required attributes to report
-                    required = ['x', 'y', 'richtung', 'typ', 'name']
-                    missing = []
-                    for a in required:
-                        try:
-                            if not hasattr(o, a):
-                                missing.append(a)
-                        except Exception:
-                            missing.append(a)
-
-                    # If no missing attributes were detected, include the exception text
-                    msg = None
-                    if missing:
-                        msg = f"Fehler in der Schülerklasse {typ_name}: Fehlende Attribute: {', '.join(missing)}"
-                    else:
-                        msg = f"Fehler beim Lesen der Schülerklasse {typ_name}: {ex_attr}"
-
+            # Finally render remaining objects (excluding Held, Knappe, Monsters)
+            remaining = [o for o in self.spielfeld.objekte if o not in ([held] if held else []) and o is not kn and getattr(o,'typ',None) != 'Monster']
+            for o in remaining:
+                try:
                     try:
+                        items = o.attribute_als_text()
+                    except Exception as ex_attr:
+                        typ_name = getattr(o, 'typ', None) or o.__class__.__name__
+                        try:
+                            hdr_txt = f"{getattr(o, 'name', typ_name)} ({typ_name})"
+                            hdr = self.font.render(hdr_txt, True, (255,255,255))
+                            self.screen.blit(hdr, (panel_x, y)); y += 20
+                        except Exception:
+                            pass
+                        required = ['x','y','richtung','typ','name']
+                        missing = []
+                        for a in required:
+                            try:
+                                if not hasattr(o, a):
+                                    missing.append(a)
+                            except Exception:
+                                missing.append(a)
+                        msg = None
+                        if missing:
+                            msg = f"Fehler in der Schülerklasse {typ_name}: Fehlende Attribute: {', '.join(missing)}"
+                        else:
+                            msg = f"Fehler beim Lesen der Schülerklasse {typ_name}: {ex_attr}"
+                        try:
+                            err = self.font.render(msg, True, (255,100,100))
+                            self.screen.blit(err, (panel_x, y)); y += 20
+                        except Exception:
+                            pass
+                        # small spacing after each problematic object
+                        y += 6
+                        continue
+
+                    for k, v in items.items():
+                        try:
+                            val = v
+                            if isinstance(k, str) and 'richt' in k.lower():
+                                dm = {'up': 'N', 'down': 'S', 'left': 'W', 'right': 'O', 'N': 'N', 'S': 'S', 'W': 'W', 'O': 'O'}
+                                val = dm.get(str(v), str(v))
+                            txt = f"{k}: {val}"
+                            while self.font.size(txt)[0] > (self.screen.get_width() - panel_x - 20):
+                                txt = txt[:-1]
+                            txt = self.font.render(f"{k}: {val}", True, (240,240,240))
+                            self.screen.blit(txt, (panel_x, y)); y += 20
+                        except Exception:
+                            continue
+                    # small spacing after each object
+                    y += 6
+                except Exception:
+                    try:
+                        typ_name = getattr(o, 'typ', None) or o.__class__.__name__
+                        msg = f"Fehler beim Anzeigen von {typ_name}"
                         err = self.font.render(msg, True, (255, 100, 100))
                         self.screen.blit(err, (panel_x, y)); y += 20
                     except Exception:
                         pass
-                    # Space after each object
-                    y += 10
-                    # continue to next object
-                    continue
-
-                # Normal path: render each attribute line. Convert 'richtung' to N/O/W/S for display.
-                for k, v in items.items():
+                    y += 6
+        except Exception:
+            # if anything unexpected happens, fall back to previous generic loop
+            try:
+                for o in self.spielfeld.objekte:
                     try:
-                        val = v
-                        if isinstance(k, str) and 'richt' in k.lower():
-                            dm = {'up': 'N', 'down': 'S', 'left': 'W', 'right': 'O', 'N': 'N', 'S': 'S', 'W': 'W', 'O': 'O'}
-                            val = dm.get(str(v), str(v))
-                        txt = f"{k}: {val}"
-                        while self.font.size(txt)[0] > (self.screen.get_width() - panel_x - 20):
-                            txt = txt[:-1]
-                        txt = self.font.render(f"{k}: {val}", True, (240,240,240))
-                        self.screen.blit(txt, (panel_x, y)); y += 20
+                        items = o.attribute_als_text()
+                        for k, v in items.items():
+                            txt = self.font.render(f"{k}: {v}", True, (240,240,240))
+                            self.screen.blit(txt, (panel_x, y)); y += 20
+                        y += 6
                     except Exception:
                         continue
-                y += 10
             except Exception:
-                # Very defensive: if anything else goes wrong, show a minimal line
-                try:
-                    typ_name = getattr(o, 'typ', None) or o.__class__.__name__
-                    msg = f"Fehler beim Anzeigen von {typ_name}"
-                    err = self.font.render(msg, True, (255, 100, 100))
-                    self.screen.blit(err, (panel_x, y)); y += 20
-                except Exception:
-                    pass
+                pass
                 y += 10
         """        
         if self._sieg:

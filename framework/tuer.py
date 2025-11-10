@@ -89,7 +89,8 @@ class Tuer(Objekt):
         return False
         
     def ist_passierbar(self):
-        return not self.offen
+        # A door is passable when it is open. Return True when offen == True.
+        return bool(self.offen)
 
     # ----------------
     # Getter API

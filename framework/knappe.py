@@ -1,16 +1,58 @@
 # framework/held.py
+import random
 import pygame
 from .objekt import Objekt
 
 class Knappe(Objekt):
     def __init__(self, framework, x=0, y=0, richtung="down",
-                 sprite_pfad="sprites/knappe.png", name="Nils",
+                 sprite_pfad="sprites/knappe.png", name=None,
                  steuerung_aktiv=False):
         super().__init__(typ="Knappe", x=x, y=y, richtung=richtung,
                          sprite_pfad=sprite_pfad, name=name)
         self.framework = framework
         self.ist_held = True
         self.geheimer_code = None
+
+        # If no explicit name was provided, try to generate one via the
+        # Spielfeld helper so framework-created Knappes keep a random name.
+        # Be robust: the 'framework' argument may be a Framework or a Spielfeld
+        # (or be missing when instantiated by student code). If we can't find
+        # the framework generator, pick a local random name as fallback.
+        if name is None:
+            got = None
+            try:
+                # If framework looks like a Framework with a spielfeld
+                if self.framework is not None:
+                    # spielfeld.generate_knappe_name preferred
+                    sp = getattr(self.framework, 'spielfeld', None)
+                    gen = None
+                    if sp is not None:
+                        gen = getattr(sp, 'generate_knappe_name', None)
+                    # fallback: framework itself might expose generator
+                    if gen is None:
+                        gen = getattr(self.framework, 'generate_knappe_name', None)
+                    if callable(gen):
+                        got = gen()
+                # if framework itself is a Spielfeld-like object
+                if got is None and hasattr(self.framework, 'generate_knappe_name'):
+                    gen = getattr(self.framework, 'generate_knappe_name')
+                    if callable(gen):
+                        got = gen()
+            except Exception:
+                got = None
+
+            if got is None:
+                # fallback: use integrated knappe name generator (rich name list)
+                try:
+                    self.name = self.generate_knappe_name()
+                except Exception:
+                    # very small fallback
+                    try:
+                        self.name = random.choice(["Nils", "Tobi", "Udo"])
+                    except Exception:
+                        self.name = "Nils"
+            else:
+                self.name = got
 
         if steuerung_aktiv:
             self.aktiviere_steuerung()
@@ -126,3 +168,18 @@ class Knappe(Objekt):
             return "W"
         else:
             return "O"
+
+    @staticmethod
+    def generate_knappe_name():
+        import random
+        names = [
+            "Page Skywalker","Jon Snowflake","Sir Lancelame","Rick Rollins",
+            "Ben of the Rings","Tony Stork","Bucky Stables","Frodolin Beutelfuss","Jamie Lameister","Gerold of Trivia",
+            "Arthur Denton","Samwise the Slacker","Obi-Wan Knappobi","Barry Slow","Knight Fury","Grogulette",
+            "Sir Bean of Gondor","Thorin Eichensohn","Legoless","Knappernick",
+            "Knapptain Iglo","Ritterschorsch","Helm Mut","Sigi von Schwertlingen","Klaus der Kleingehauene","Egon Eisenfaust","Ben Knied","Rainer Zufallsson","Dietmar Degenhart","Uwe von Ungefähr","Hartmut Helmrich","Bodo Beinhart","Kai der Kurze","Knapphart Stahl","Tobi Taschenmesser","Fridolin Fehlschlag","Gernot Gnadenlos","Ralf Rüstungslos","Gustav Gürtelschwert","Kuno Knickbein"
+        ]
+        try:
+            return random.choice(names).capitalize()
+        except Exception:
+            return "Knappe"

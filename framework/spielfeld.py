@@ -1,7 +1,7 @@
 # framework/spielfeld.py
 import pygame
 from .level import Level
-from .utils import richtung_offset
+from .utils import richtung_offset, lade_sprite
 from .tuer import Tuer
 from .code import Code
 from .tor import Tor
@@ -10,38 +10,46 @@ from random import randint
 import random
 import importlib
 import traceback
+import threading
+import tkinter as _tk
+from tkinter import messagebox as _tk_messagebox
 import os
 import ast
 import types
-
+ 
 class Spielfeld:
     def __init__(self, levelfile, framework, feldgroesse=64, auto_erzeuge_objekte=True):
+        # basic initialization (rest of __init__ continues below)
         self.framework = framework
-        # keep the original level file path for heuristics (e.g. level number)
         self.levelfile = levelfile
-        # ensure framework has a reference back to this spielfeld (main program normally sets this)
         try:
             setattr(self.framework, 'spielfeld', self)
         except Exception:
             pass
         self.feldgroesse = feldgroesse
-        self.level = Level(levelfile)
-        self.settings = self.level.settings
-        # Compute the set of canonical classes required by this level BEFORE
-        # any spawning runs (iter_entity_spawns mutates level.tiles). This
-        # preserves the original spawn information for victory checks.
+        try:
+            self.level = Level(levelfile)
+        except Exception:
+            # best-effort fallback
+            self.level = Level(levelfile)
+        try:
+            self.settings = self.level.settings
+        except Exception:
+            self.settings = {}
+        try:
+            # victory settings cached separately for compatibility with check_victory
+            self.victory_settings = self.settings.get('victory', {}) if isinstance(self.settings, dict) else {}
+        except Exception:
+            self.victory_settings = {}
         try:
             self._required_spawn_classes = self._compute_required_classes()
         except Exception:
             self._required_spawn_classes = set()
-        # Victory settings (may contain dict with keys: collect_hearts, move_to, classes_present)
-        try:
-            self.victory_settings = self.settings.get('victory', {}) if isinstance(self.settings, dict) else {}
-        except Exception:
-            self.victory_settings = {}
         self.objekte = []
         self.held = None
         self.knappe = None
+
+        self._logged_broken_objects = set()
         #self.zufallscode = str(randint(1000,9999))
         self.zufallscode = self.random_zauberwort()
         self.orc_names = []
@@ -63,7 +71,7 @@ class Spielfeld:
     def _spawn_aus_level(self):
         from .held import Held
         from .herz import Herz
-        from .monster import Monster
+        from .monster import Monster, Bogenschuetze
         from .tor import Tor
         from .code import Code
         from .tuer import Tuer
@@ -145,6 +153,119 @@ class Spielfeld:
         # collect villagers created so we can inject desired items afterwards
         spawned_villagers = []
 
+        # --- Spawn fixed Hindernis objects for tiles (so level.gib_objekt_bei returns objects)
+        # Map tile codes to human-readable types
+        tile_to_type = {'b': 'Busch', 't': 'Baum', 'm': 'Berg'}
+        try:
+            HindernisClass = None
+            try:
+                HindernisClass = self._get_entity_class('Hindernis', None)
+            except Exception:
+                HindernisClass = None
+
+            class _InternalHindernis:
+                def __init__(self, art, x=None, y=None):
+                    self.typ = art
+                    self.name = art
+                    self.x = x
+                    self.y = y
+                    self.framework = None
+                    # object state expected by framework
+                    self.tot = False
+                def ist_passierbar(self):
+                    # Default: if student Hindernis class is available and provides
+                    # ist_passierbar, defer to it; otherwise legacy behavior (not passierbar)
+                    stud = getattr(self, '_student', None)
+                    if stud is not None:
+                        if hasattr(stud, 'ist_passierbar'):
+                            try:
+                                return bool(stud.ist_passierbar())
+                            except Exception:
+                                return True
+                        else:
+                            # student class present but no method -> tile remains passierbar
+                            return True
+                    # no student class -> legacy: not passierbar
+                    return False
+                def attribute_als_text(self):
+                    # hide from inspector by returning empty dict
+                    return {}
+                def zeichne(self, screen, feldgroesse):
+                    # Hindernisse werden vom Level-Tile gerendert by the framework; do nothing here.
+                    return
+
+            for yy, row in enumerate(self.level.tiles):
+                for xx, code in enumerate(row):
+                    art = tile_to_type.get(code)
+                    if not art:
+                        continue
+                    obj = None
+                    # Prefer student class if present
+                    try:
+                        if HindernisClass is not None and student_mode_enabled:
+                            # try flexible instantiation signatures
+                            try:
+                                student_inst = HindernisClass(art)
+                            except TypeError:
+                                try:
+                                    student_inst = HindernisClass(self.level, art)
+                                except Exception:
+                                    try:
+                                        student_inst = HindernisClass(self.level, xx, yy, art)
+                                    except Exception:
+                                        student_inst = None
+                            if student_inst is not None:
+                                obj = student_inst
+                                try:
+                                    # do not forcibly set attributes on student object
+                                    pass
+                                except Exception:
+                                    pass
+                                # attach student marker for passability checks
+                                try:
+                                    setattr(obj, '_student_present', True)
+                                except Exception:
+                                    pass
+                                # but also keep a small proxy so framework can call ist_passierbar
+                                try:
+                                    proxy = _InternalHindernis(art, xx, yy)
+                                    proxy._student = obj
+                                    obj = proxy
+                                except Exception:
+                                    # fallback: use student_inst directly
+                                    pass
+                        else:
+                            obj = _InternalHindernis(art, xx, yy)
+                    except Exception:
+                        obj = _InternalHindernis(art, xx, yy)
+
+                    try:
+                        obj.x = xx
+                        obj.y = yy
+                    except Exception:
+                        pass
+                    try:
+                        obj.framework = self.framework
+                    except Exception:
+                        pass
+                    try:
+                        # ensure typ/name present for rendering
+                        if not hasattr(obj, 'typ'):
+                            obj.typ = art
+                        if not hasattr(obj, 'name'):
+                            obj.name = art
+                    except Exception:
+                        pass
+                    try:
+                        # avoid appending None objects (robustness)
+                        if obj is None:
+                            obj = _InternalHindernis(art, xx, yy)
+                        self.objekte.append(obj)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
         for typ, x, y, sichtbar in self.level.iter_entity_spawns():
             t = typ.lower() if isinstance(typ, str) else typ
             # Lese Richtung (default "down")
@@ -180,14 +301,49 @@ class Spielfeld:
                         try:
                             from .held import MetaHeld
                             self.held = MetaHeld(self.framework, student_inst, x, y, richt, weiblich=getattr(self.framework, "weiblich", False))
+                            # Check whether the student instance actually provided the required attributes.
+                            required = ['level', 'x', 'y', 'richtung', 'weiblich', 'typ', 'name']
+                            missing = [a for a in required if not hasattr(student_inst, a)]
+                            if missing:
+                                # user-visible console message listing missing attributes
+                                try:
+                                    short = [ ('r' if m=='richtung' else m) for m in missing ]
+                                    print(f"Helden Klasse gefunden, aber unvollständig. Fehlend: {', '.join(short)}")
+                                except Exception:
+                                    print("Helden Klasse gefunden, aber unvollständig.")
+                                # mark MetaHeld so rendering can skip it
+                                try:
+                                    setattr(self.held, '_student_incomplete', missing)
+                                except Exception:
+                                    pass
                         except Exception:
-                            # fallback to internal Held
+                            # Could not wrap or use the student instance. If the level
+                            # explicitly requested student classes, do NOT silently
+                            # fall back to the internal Framework Held; instead skip
+                            # spawning the hero so the exercise cannot be bypassed.
+                            if student_mode_enabled:
+                                try:
+                                    print("Hinweis: Student-Held gefunden, aber kann nicht instanziert/verwunden werden; Held wird nicht gespawnt.")
+                                except Exception:
+                                    pass
+                                self.held = None
+                                # do not append; continue to next spawn
+                                continue
+                            # otherwise fall back to framework Held (legacy behavior)
                             try:
                                 self.held = FrameworkHeld(self.framework, x, y, richt, weiblich=getattr(self.framework, "weiblich", False))
                             except Exception:
                                 raise
                     else:
-                        # couldn't instantiate student class -> fallback
+                        # couldn't instantiate student class
+                        if student_mode_enabled:
+                            try:
+                                print("Hinweis: Level verlangt Schülerklassen, aber keine Held-Instanz erzeugbar; Held wird nicht gespawnt.")
+                            except Exception:
+                                pass
+                            self.held = None
+                            continue
+                        # fallback to framework Held when student mode is not active
                         try:
                             self.held = FrameworkHeld(self.framework, x, y, richt, weiblich=getattr(self.framework, "weiblich", False))
                         except Exception:
@@ -198,7 +354,9 @@ class Spielfeld:
                     except Exception:
                         raise
 
-                self.objekte.append(self.held)
+                # Only append the hero object if it was actually created.
+                if getattr(self, 'held', None) is not None:
+                    self.objekte.append(self.held)
                 if sichtbar:
                     import framework.grundlage as grundlage
                     setattr(grundlage, self.held.typ.lower(), self.held)
@@ -241,6 +399,29 @@ class Spielfeld:
                 if sichtbar:
                     import framework.grundlage as grundlage
                     setattr(grundlage, m.typ.lower(), m)
+
+            elif t == "y":
+                # Bogenschuetze (ranged monster)
+                n = self.generate_orc_name()
+                while n in self.orc_names:
+                    n = self.generate_orc_name()
+                self.orc_names.append(n)
+                cls = self._get_entity_class("Bogenschuetze", Bogenschuetze)
+                if student_mode_enabled and cls is None:
+                    continue
+                try:
+                    m = cls(x, y, name=n)
+                except Exception:
+                    m = Bogenschuetze(x, y, name=n)
+                m.framework = self.framework
+                try:
+                    m.richtung = richt
+                except Exception:
+                    pass
+                self.objekte.append(m)
+                if sichtbar:
+                    import framework.grundlage as grundlage
+                    setattr(grundlage, "bogenschuetze", m)
 
             elif t == "c":
                 cls = self._get_entity_class("Code", Code)
@@ -423,10 +604,46 @@ class Spielfeld:
                 cls = self._get_entity_class("Knappe", Knappe)
                 if student_mode_enabled and cls is None:
                     continue
+                # Instantiate student-provided Knappe if available.
+                # Important: student classes often expect a Level object as first
+                # argument (their API). The framework historically passed the
+                # Framework instance and a generated name. To avoid forcing the
+                # student to accept a random name, we try several constructor
+                # signatures in a safe order and avoid passing the auto-generated
+                # name to student classes. If all attempts fail, fall back to
+                # the framework's Knappe implementation (which still receives
+                # the generated name).
                 try:
-                    self.knappe = cls(self.framework, x, y, richt, name=self.generate_knappe_name())
+                    inst = None
+                    if cls is not None:
+                        # Try: student wants Level as first arg
+                        try:
+                            inst = cls(self.level, x, y, richt)
+                        except Exception:
+                            inst = None
+                        # Try: student wants Framework as first arg
+                        if inst is None:
+                            try:
+                                inst = cls(self.framework, x, y, richt)
+                            except Exception:
+                                inst = None
+                        # Try other common variant: level + kwargs (no name)
+                        if inst is None:
+                            try:
+                                inst = cls(self.level, x, y, richt, **{})
+                            except Exception:
+                                inst = None
+                    if inst is not None:
+                        self.knappe = inst
+                    else:
+                        # Final fallback: use framework Knappe with generated name
+                        self.knappe = Knappe(self.framework, x, y, richt, name=self.generate_knappe_name())
                 except Exception:
-                    self.knappe = Knappe(self.framework, x, y, richt, name=self.generate_knappe_name())
+                    # If anything unexpected fails, ensure we still spawn a framework Knappe
+                    try:
+                        self.knappe = Knappe(self.framework, x, y, richt, name=self.generate_knappe_name())
+                    except Exception:
+                        self.knappe = None
                 self.objekte.append(self.knappe)
                 if sichtbar:
                     import framework.grundlage as grundlage
@@ -1054,8 +1271,7 @@ class Spielfeld:
             pass
         # Sortierte Zeichnung: zuerst Boden / Hindernisse, dann Items, dann Lebewesen
         # Use canonical type names (matching Objekt.typ) so objects are drawn.
-        zeichenreihenfolge = ["Berg", "Baum", "Busch", "Spruch", "Herz", "Tuer", "Tor", "Schluessel",
-                              "Monster", "Held", "Knappe", "Dorfbewohner", "Dorfbewohnerin"]
+        zeichenreihenfolge = ["Berg", "Baum", "Busch", "Hindernis", "Spruch", "Herz", "Tuer", "Tor", "Schluessel", "Monster", "Held", "Knappe", "Dorfbewohner", "Dorfbewohnerin"]
 
         # Determine whether student mode requests are active and whether a student
         # Hindernis class exists. If the level requests student classes but the
@@ -1098,9 +1314,95 @@ class Spielfeld:
             except Exception:
                 pass
         for typ in zeichenreihenfolge:
-            #for o in [obj for obj in self.objekte if not obj.tot and obj.typ == typ]:
-            for o in [obj for obj in self.objekte if obj.typ == typ]:
-                o.zeichne(screen, self.feldgroesse)
+            # Iterate defensively: student-provided objects may raise on attribute access
+            # (or miss attributes). Avoid list comprehensions that access obj attributes
+            # inside the generator expression; instead query each object in a try/except
+            # and skip misbehaving ones.
+            for o in list(self.objekte):
+                try:
+                    # NOTE: do not skip dead objects here; dead characters should still be
+                    # rendered (KO sprite) so the student sees the result of combat.
+                    # must match requested type
+                    if getattr(o, 'typ', None) != typ:
+                        continue
+                except Exception:
+                    # object misbehaved when reading attributes; skip it
+                    continue
+
+                # Previously we skipped rendering MetaHeld objects whose student
+                # implementation was marked '_student_incomplete'. That hid the
+                # student-provided class entirely and could make the framework
+                # appear to have used the integrated Held. Instead, always
+                # attempt to render the object (so incomplete student heroes are
+                # visible and exercised); if the student's draw raises, we'll
+                # fall back to the default rendering below.
+
+                # Prefer calling student-provided zeichne() if present, otherwise use
+                # framework fallback drawing to ensure student objects without
+                # zeichne() still appear correctly.
+                try:
+                    if hasattr(o, 'zeichne') and callable(getattr(o, 'zeichne')):
+                        try:
+                            o.zeichne(screen, self.feldgroesse)
+                        except Exception:
+                            # If student's draw raises, fall through to overlay + popup
+                            raise
+                    else:
+                        # Use framework default rendering for objects lacking zeichne()
+                        try:
+                            self._draw_object_default(o, screen, self.feldgroesse)
+                        except Exception:
+                            # fallthrough to error handling below
+                            raise
+                except Exception:
+                    # best-effort: don't let a single broken draw break the whole frame
+                    try:
+                        # Draw a red question-mark overlay above the tile if we know x/y
+                        if hasattr(o, 'x') and hasattr(o, 'y'):
+                            ox = int(getattr(o, 'x', 0))
+                            oy = int(getattr(o, 'y', 0))
+                            rx = ox * self.feldgroesse
+                            ry = oy * self.feldgroesse
+                            try:
+                                # translucent circle behind marker
+                                surf = pygame.Surface((self.feldgroesse, self.feldgroesse), pygame.SRCALPHA)
+                                surf.fill((0,0,0,0))
+                                pygame.draw.circle(surf, (220,20,20,180), (self.feldgroesse//2, self.feldgroesse//2), max(8, self.feldgroesse//4))
+                                screen.blit(surf, (rx, ry))
+                                # question mark
+                                qfont = pygame.font.SysFont(None, max(12, self.feldgroesse//2))
+                                qsurf = qfont.render("?", True, (255,255,255))
+                                qrect = qsurf.get_rect(center=(rx + self.feldgroesse//2, ry + self.feldgroesse//2))
+                                screen.blit(qsurf, qrect)
+                            except Exception:
+                                pass
+
+                        # Log and show a tkinter error popup once per problematic object
+                        try:
+                            oid = id(o)
+                            if oid not in self._logged_broken_objects:
+                                self._logged_broken_objects.add(oid)
+                                typ = getattr(o, 'typ', None)
+                                name = getattr(o, 'name', None)
+                                pos = f"{getattr(o, 'x', '?')},{getattr(o, 'y', '?')}"
+                                tb = traceback.format_exc()
+                                msg = f"Fehler beim Zeichnen des Objekts {typ} ({name}) an Position {pos}\n\n{tb}"
+
+                                def _popup(text):
+                                    try:
+                                        root = _tk.Tk()
+                                        root.withdraw()
+                                        _tk_messagebox.showerror("Objektfehler", text)
+                                        root.destroy()
+                                    except Exception:
+                                        pass
+
+                                th = threading.Thread(target=_popup, args=(msg,), daemon=True)
+                                th.start()
+                        except Exception:
+                            pass
+                    except Exception:
+                        pass
 
         # Draw move-to victory target if configured
         try:
@@ -1119,6 +1421,73 @@ class Spielfeld:
                     except Exception:
                         # best-effort only
                         pygame.draw.rect(screen, (255, 0, 0), rect, 4)
+        except Exception:
+            pass
+
+        # Draw transient projectiles (arrows) defined on the framework (brown moving lines)
+        try:
+            fw = getattr(self, 'framework', None)
+            if fw is not None and hasattr(fw, '_projectiles'):
+                now = pygame.time.get_ticks()
+                remaining = []
+                for p in list(getattr(fw, '_projectiles') or []):
+                    try:
+                        st = p.get('start_time', now)
+                        dur = int(p.get('duration', 200) or 200)
+                        t = float(now - st) / float(max(1, dur))
+                        if t >= 1.0:
+                            # finalize: mark victim KO and load KO-sprite
+                            victim = p.get('victim')
+                            attacker = p.get('attacker')
+                            try:
+                                if victim is not None:
+                                    victim.tot = True
+                                    try:
+                                        victim._update_sprite_richtung()
+                                    except Exception:
+                                        pass
+                                    # load KO sprite if available
+                                    try:
+                                        base_opf = os.path.splitext(victim.sprite_pfad)[0]
+                                        ko_pfad = f"{base_opf}_ko.png"
+                                        if os.path.exists(ko_pfad):
+                                            victim.bild = pygame.image.load(ko_pfad).convert_alpha()
+                                    except Exception:
+                                        pass
+                                    # set framework hint / block actions for hero/knappe
+                                    try:
+                                        vtyp = (getattr(victim, 'typ', '') or '').lower()
+                                        if vtyp in ('held', 'knappe'):
+                                            try:
+                                                fw._hinweis = f"{victim.name} wurde von {getattr(attacker,'name', 'Bogenschütze')} überrascht!"
+                                            except Exception:
+                                                fw._hinweis = "Ein Schütze hat getroffen!"
+                                            fw._aktion_blockiert = True
+                                    except Exception:
+                                        pass
+                            except Exception:
+                                pass
+                            # projectile finished; don't re-add
+                            continue
+
+                        # draw partial line from start to current position
+                        sx, sy = p.get('start', (0, 0))
+                        ex, ey = p.get('end', (0, 0))
+                        cx = int(sx + (ex - sx) * t)
+                        cy = int(sy + (ey - sy) * t)
+                        color = (139, 69, 19)  # brown
+                        width = max(2, self.feldgroesse // 12)
+                        try:
+                            pygame.draw.line(screen, color, (sx, sy), (cx, cy), width)
+                        except Exception:
+                            pass
+                        remaining.append(p)
+                    except Exception:
+                        continue
+                try:
+                    fw._projectiles = remaining
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -1201,6 +1570,75 @@ class Spielfeld:
                  "Knapptain Iglo","Ritterschorsch","Helm Mut","Sigi von Schwertlingen","Klaus der Kleingehauene","Egon Eisenfaust","Ben Knied","Rainer Zufallsson","Dietmar Degenhart","Uwe von Ungefähr","Hartmut Helmrich","Bodo Beinhart","Kai der Kurze","Knapphart Stahl","Tobi Taschenmesser","Fridolin Fehlschlag","Gernot Gnadenlos","Ralf Rüstungslos","Gustav Gürtelschwert","Kuno Knickbein"]
         return random.choice(names).capitalize()
 
+    def _draw_object_default(self, o, screen, feldgroesse):
+        """Best-effort drawing for objects that don't implement zeichne().
+        Uses available object.bild or falls back to canonical sprites by type.
+        """
+        try:
+            ox = int(getattr(o, 'x', 0))
+            oy = int(getattr(o, 'y', 0))
+        except Exception:
+            return
+
+        # prefer an existing loaded surface on the object
+        surf = getattr(o, 'bild', None)
+        if surf is None:
+            # try student-provided sprite path
+            spf = getattr(o, 'sprite_pfad', None)
+            if spf:
+                try:
+                    surf = lade_sprite(spf, feldgroesse)
+                except Exception:
+                    surf = None
+
+        if surf is None:
+            # choose default by type
+            typ = getattr(o, 'typ', None) or o.__class__.__name__
+            try:
+                if typ == 'Knappe':
+                    surf = lade_sprite('sprites/knappe.png', feldgroesse)
+                elif typ == 'Held':
+                    weib = getattr(o, 'weiblich', False)
+                    surf = lade_sprite('sprites/held2.png' if weib else 'sprites/held.png', feldgroesse)
+                elif typ == 'Monster':
+                    surf = lade_sprite('sprites/monster.png', feldgroesse)
+                elif typ in ('Herz', 'Spruch', 'Tuer', 'Tor', 'Schluessel'):
+                    # use level textures where available
+                    tex = None
+                    try:
+                        # mapping of typ to tile keys
+                        keymap = {'Herz': 'h', 'Spruch': 's', 'Tuer': 't', 'Tor': 'r', 'Schluessel': 'k'}
+                        k = keymap.get(typ)
+                        if k:
+                            tex = self.level.texturen.get(k)
+                    except Exception:
+                        tex = None
+                    if tex:
+                        surf = tex
+                    else:
+                        surf = lade_sprite(None, feldgroesse)
+                else:
+                    surf = lade_sprite(None, feldgroesse)
+            except Exception:
+                surf = lade_sprite(None, feldgroesse)
+
+        try:
+            # Let the object update its directional sprite (if it has per-direction files)
+            try:
+                if hasattr(o, '_update_sprite_richtung'):
+                    try:
+                        o._update_sprite_richtung()
+                        surf = getattr(o, 'bild', surf)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+            img = pygame.transform.scale(surf, (feldgroesse, feldgroesse))
+            screen.blit(img, (ox * feldgroesse, oy * feldgroesse))
+        except Exception:
+            pass
+
     # --- Kollisionen / Logik ---
     def innerhalb(self, x, y):
         return 0 <= x < self.level.breite and 0 <= y < self.level.hoehe
@@ -1217,27 +1655,115 @@ class Spielfeld:
 
         # Feste Hindernisse im Level
         tile = self.level.tiles[y][x]
-        if tile in ("b", "t", "m"):  # Berge, Bäume, Monster etc.
-            return False
-
-        # Alle Objekte am Ziel prüfen
-        for o in self.objekte:
-            if o.tot:
+        if tile in ("b", "t", "m"):
+            # If student mode requests Hindernis classes, defer to object-level
+            # ist_passierbar() if available; otherwise legacy behaviour.
+            try:
+                student_mode_enabled = bool(self.settings.get('import_pfad') or self.settings.get('use_student_module') or self.settings.get('student_classes_in_subfolder'))
+            except Exception:
+                student_mode_enabled = False
+            if student_mode_enabled and self._student_has_class('Hindernis'):
+                # find hindernis object at (x,y)
+                for o in self.objekte:
+                    if getattr(o, 'x', None) == x and getattr(o, 'y', None) == y:
+                            # if object has ist_passierbar: use its result
+                            if hasattr(o, 'ist_passierbar'):
+                                try:
+                                    # allow level to request a compatibility inversion
+                                    invert = False
+                                    try:
+                                        cfg = self.settings.get('Hindernis', {}) if isinstance(self.settings, dict) else {}
+                                        invert = bool(cfg.get('invert_passierbar', False))
+                                    except Exception:
+                                        invert = False
+                                    val = bool(o.ist_passierbar())
+                                    if invert:
+                                        val = not val
+                                    # debug trace when passability seems unexpected
+                                    try:
+                                        print(f"[DEBUG] Hindernis at ({x},{y}) -> ist_passierbar()={val} (raw={bool(o.ist_passierbar())}, invert={invert})")
+                                    except Exception:
+                                        pass
+                                    return val
+                                except Exception:
+                                    return True
+                            else:
+                                # student hindernis present but no method -> tile remains passierbar
+                                return True
+                # no hindernis object found: default to passable
                 return True
-            if (o.x, o.y) == (x, y) and o != self:
-                if o.name == "Tür":
-                    # Tür ist nur passierbar, wenn offen
-                    if hasattr(o, "offen") and not o.offen:
-                        return False
-                elif o.typ in ("Monster", "Code", "Herz", "Knappe", "Held"):
-                    # Monster sind unpassierbar (außer besiegt)
-                    if o.typ in ("Monster","Knappe"):
-                        return False
-                    # Code oder Herz: darf man betreten (man steht drauf)
+            else:
+                # legacy behaviour: tiles are not passierbar
+                return False
+
+        # Alle Objekte am Ziel prüfen (defensiv: skip None/misbehaving entries)
+        for o in list(self.objekte):
+            try:
+                if getattr(o, 'tot', False):
+                    # dead objects don't block movement
                     continue
-                elif o.typ == "Tor":
-                    if o.ist_passierbar():
+            except Exception:
+                continue
+
+            try:
+                ox, oy = getattr(o, 'x', None), getattr(o, 'y', None)
+            except Exception:
+                ox, oy = None, None
+
+            if (ox, oy) == (x, y) and o is not obj:
+                # Door handling: Tür is only passable if offen is True
+                try:
+                    oname = getattr(o, 'name', '') or ''
+                except Exception:
+                    oname = ''
+                if 'Tür' in str(oname) or oname == 'Tuer':
+                    try:
+                        if hasattr(o, 'offen') and not getattr(o, 'offen', False):
+                            return False
+                    except Exception:
                         return False
+
+                try:
+                    otyp = getattr(o, 'typ', '') or ''
+                except Exception:
+                    otyp = ''
+
+                # If the object exposes ist_passierbar(), use it as the authoritative
+                # source of passability. This allows student-created Hindernis
+                # instances (and any other custom objects) to control whether
+                # they block movement regardless of their `typ` string.
+                try:
+                    if hasattr(o, 'ist_passierbar'):
+                        try:
+                            ok = bool(o.ist_passierbar())
+                            # ist_passierbar() == True means passable, False means blocked
+                            if not ok:
+                                return False
+                            else:
+                                # explicit passable -> continue checking other objects
+                                continue
+                        except Exception:
+                            # On error, be conservative and treat as passable
+                            pass
+                except Exception:
+                    pass
+
+                if str(otyp) in ("Monster", "Knappe"):
+                    # monster and knappe block movement
+                    return False
+
+                if str(otyp) in ("Code", "Herz"):
+                    # items/flags are allowed to be stood on
+                    continue
+
+                if str(otyp) == "Tor":
+                    try:
+                        # if tor is NOT passierbar, block movement
+                        if not getattr(o, 'ist_passierbar', lambda: True)():
+                            return False
+                    except Exception:
+                        return False
+
         return True
 
 

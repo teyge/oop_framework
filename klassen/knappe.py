@@ -1,16 +1,13 @@
 """Demo-Implementierung einer Schüler-Klasse für 'Held' in klassen/held.py"""
-class Held:
-    def __init__(self, level, x, y, richt, weiblich=False):
+class Knappe:
+    def __init__(self, level, x, y, richt):
         # student-held receives only the level
         self.level = level
         self.x = x
         self.y = y
         self.richtung = richt
-        self.weiblich = weiblich
-        self.gold = 0
-        self.typ = "Held"
-        self.name = "Namenloser Held"
-        self.knappe = None
+        self.typ = "Knappe"
+        self.name = "Namenloser Knappe"
         self.spruch = ""
         #self.inventar = Inventar() TODO (nicht von agent implementieren lassen!)
 
@@ -67,13 +64,6 @@ class Held:
         elif richt == "right" or richt == "O" or richt == "Osten" or richt == "rechts":
             self.richtung = "right"
 
-    def setze_knappe(self, knappe):
-        if knappe.typ == "Knappe":
-            self.knappe = knappe
-    
-    def gib_knappe(self):
-        return self.knappe
-    
     
 
     # Die folgende Methode wird später die ursprüngliche Basis-Methode ersetzen und dabei das level verwenden
@@ -137,11 +127,8 @@ class Held:
         current = self.level.gib_objekt_bei(px,py)
         amount = 0
         while current != None and current.ist_passierbar():
-            try:
-                if getattr(current, 'typ', '') and str(getattr(current, 'typ')).lower() in ('herz', 'heart'):
-                    amount += 1
-            except Exception:
-                pass
+            if current.typ == "Herz":
+                amount += 1
             px += dx
             py += dy
             current = self.level.gib_objekt_bei(px,py)

@@ -29,6 +29,26 @@ class LevelManager:
         
     def gib_objekt_bei(self,x,y):
         return framework.gib_objekt_an(x,y)
+
+    def objekt_hinzufuegen(self, obj):
+        """Convenience: forward to the active framework instance so students
+        can call `level.objekt_hinzufuegen(obj)` directly from their code.
+        """
+        try:
+            fw = getattr(self, 'framework', None)
+            if fw is None:
+                # fallback to module-level framework if available
+                try:
+                    from framework import grundlage as _g
+                    fw = getattr(_g, 'framework', None)
+                except Exception:
+                    fw = None
+            if fw is None:
+                raise AttributeError('Kein Framework vorhanden')
+            return fw.objekt_hinzufuegen(obj)
+        except Exception:
+            # Bubble up the AttributeError to make student errors visible
+            raise
         
  
 """

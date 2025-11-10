@@ -3,6 +3,12 @@ import os, subprocess, sys, glob, time
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 LSG_DIR = os.path.join(ROOT, "lsg")
 
+# Global override for delay_ms used by student solution commands (geh/links/...) in lsg files.
+# If set to a non-negative integer, this value will be exported into the subprocess
+# environment as RUN_LSG_DELAY_MS and used to force all delays to that value.
+# Set to -1 to keep the originals defined in the solution files.
+GLOBAL_DELAY_MS = int(os.getenv("RUN_LSG_DELAY_MS", "0"))
+
 pyexe = sys.executable
 results = []
 
@@ -21,6 +27,11 @@ for path in paths:
     env = os.environ.copy()
     env["OOP_TEST"] = "1"
     env["PYTHONPATH"] = ROOT  # damit 'import framework' aus lsg funktioniert
+    # pass delay override into subprocess so a sitecustomize shim can apply it
+    try:
+        env["RUN_LSG_DELAY_MS"] = str(GLOBAL_DELAY_MS)
+    except Exception:
+        pass
 
     proc = subprocess.Popen(
         [pyexe, path],

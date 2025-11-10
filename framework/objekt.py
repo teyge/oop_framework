@@ -171,7 +171,19 @@ class Objekt:
         return self.x
     
     def verbleibende_herzen(self):
-            return self.framework.spielfeld.anzahl_herzen()
+            sp = getattr(self, "framework", None)
+            sp = getattr(sp, "spielfeld", None) if sp else None
+            if not sp:
+                try:
+                    import framework.grundlage as grundlage
+                    fw = getattr(grundlage, 'framework', None)
+                    sp = getattr(fw, 'spielfeld', None) if fw else None
+                except Exception:
+                    sp = None
+            if not sp:
+                print("[Warnung] Kein Spielfeld vorhanden – verbleibende_herzen() abgebrochen.")
+                return 0
+            return sp.anzahl_herzen()
 
         
     def _ungueltige_aktion(self, meldung="Ungültige Aktion"):
@@ -187,10 +199,21 @@ class Objekt:
 
     # ---- sichtbare Verzögerung, inklusive Render ----
     def _render_and_delay(self, ms=0):
-        if not self.framework:  # falls außerhalb genutzt
-            if ms > 0: pygame.time.wait(ms)
+        # Resolve framework instance that provides _render_frame()
+        fw = getattr(self, 'framework', None)
+        if not fw or not hasattr(fw, '_render_frame'):
+            try:
+                import framework.grundlage as grundlage
+                fw = getattr(grundlage, 'framework', None)
+            except Exception:
+                fw = None
+
+        if not fw:  # falls außerhalb genutzt
+            if ms > 0:
+                pygame.time.wait(ms)
             return
-        self.framework._render_frame()
+
+        fw._render_frame()
         if ms > 0:
             # aktiv warten, Events pumpen, damit Fenster responsiv bleibt
             start = pygame.time.get_ticks()
@@ -198,34 +221,52 @@ class Objekt:
                 for event in pygame.event.get():
                     if event.type == pygame.QUIT:
                         pygame.quit(); raise SystemExit
-                self.framework._render_frame()
+                try:
+                    fw._render_frame()
+                except Exception:
+                    pass
                 pygame.time.delay(16)  # ~60 FPS
 
     # ---- Aktionen (Baseline: direkt ausführen + sichtbar machen) ----
     def geh(self, delay_ms=500):
-        if self.framework and getattr(self.framework, "_aktion_blockiert", False):
+        # Respect global action-block flag when available
+        fw = getattr(self, 'framework', None)
+        if fw and getattr(fw, '_aktion_blockiert', False):
             return
 
-        """Bewegt das Objekt ein Feld in Blickrichtung, prüft Hindernisse und Monster."""
-        if self.tot or not self.framework:
+        # Obtain spielfeld robustly (allow cases where self.framework may not be the Framework)
+        sp = None
+        if fw is not None:
+            sp = getattr(fw, 'spielfeld', None)
+        if not sp:
+            try:
+                import framework.grundlage as grundlage
+                fw2 = getattr(grundlage, 'framework', None)
+                sp = getattr(fw2, 'spielfeld', None) if fw2 else None
+            except Exception:
+                sp = None
+
+        if self.tot or not sp:
             return
 
         dx, dy = richtung_offset(self.richtung)
         nx, ny = self.x + dx, self.y + dy
 
         # 1️⃣ Prüfe, ob das Ziel betretbar ist
-        if not self.framework.spielfeld.kann_betreten(self, nx, ny):
-            mon = self.framework.spielfeld.finde_monster(nx, ny)
-            if mon and self.typ == "Held" and self.framework.spielfeld.ist_frontal_zu_monster(self, mon):
+        if not sp.kann_betreten(self, nx, ny):
+            mon = sp.finde_monster(nx, ny)
+            if mon and self.typ == "Held" and sp.ist_frontal_zu_monster(self, mon):
                 # Held läuft in Monster hinein → stirbt
                 self.tot = True
                 self._update_sprite_richtung()
                 self._render_and_delay(100)
-
                 return
             # Ungültige Bewegung (z. B. Wand, Baum, Tür)
-            if not self.framework._aus_tastatur:
-                self._ungueltige_aktion("Ungültige Aktion. Versuch es nochmal!")
+            if not getattr(fw, '_aus_tastatur', False):
+                try:
+                    self._ungueltige_aktion("Ungültige Aktion. Versuch es nochmal!")
+                except Exception:
+                    pass
             print("["+self.typ+"] Dahin kann ich nicht gehen!")
             return
 
@@ -234,29 +275,43 @@ class Objekt:
         self._render_and_delay(delay_ms)
         
     def zurueck(self, delay_ms=500):
-        if self.framework and getattr(self.framework, "_aktion_blockiert", False):
+        fw = getattr(self, 'framework', None)
+        if fw and getattr(fw, '_aktion_blockiert', False):
             return
 
-        """Bewegt das Objekt ein Feld in Blickrichtung, prüft Hindernisse und Monster."""
-        if self.tot or not self.framework:
+        # resolve spielfeld
+        sp = None
+        if fw is not None:
+            sp = getattr(fw, 'spielfeld', None)
+        if not sp:
+            try:
+                import framework.grundlage as grundlage
+                fw2 = getattr(grundlage, 'framework', None)
+                sp = getattr(fw2, 'spielfeld', None) if fw2 else None
+            except Exception:
+                sp = None
+
+        if self.tot or not sp:
             return
 
         dx, dy = richtung_offset2(self.richtung)
         nx, ny = self.x + dx, self.y + dy
 
         # 1️⃣ Prüfe, ob das Ziel betretbar ist
-        if not self.framework.spielfeld.kann_betreten(self, nx, ny):
-            mon = self.framework.spielfeld.finde_monster(nx, ny)
-            if mon and self.typ == "Held" and self.framework.spielfeld.ist_frontal_zu_monster(self, mon):
-                if mon and self.typ == "Held" and self.framework.spielfeld.ist_frontal_zu_monster(self, mon):
-                    self.tot = True
-                    self._update_sprite_richtung()  # 🔧 KO-Grafik laden
-                    self._render_and_delay(delay_ms)
-                    return
+        if not sp.kann_betreten(self, nx, ny):
+            mon = sp.finde_monster(nx, ny)
+            if mon and self.typ == "Held" and sp.ist_frontal_zu_monster(self, mon):
+                self.tot = True
+                self._update_sprite_richtung()  # 🔧 KO-Grafik laden
+                self._render_and_delay(delay_ms)
+                return
 
             # Ungültige Bewegung (z. B. Wand, Baum, Tür)
-            if not self.framework._aus_tastatur:
-                self._ungueltige_aktion("Ungültige Aktion. Versuch es nochmal!")
+            if not getattr(fw, '_aus_tastatur', False):
+                try:
+                    self._ungueltige_aktion("Ungültige Aktion. Versuch es nochmal!")
+                except Exception:
+                    pass
             print("["+self.typ+"] Dahin kann ich nicht gehen!")
             return
 
@@ -288,15 +343,31 @@ class Objekt:
         self.nehme_auf(delay_ms)
 
     def nehme_auf(self, delay_ms=500):
-        if self.framework and getattr(self.framework, "_aktion_blockiert", False):
+        fw = getattr(self, 'framework', None)
+        if fw and getattr(fw, '_aktion_blockiert', False):
             return
         if self.typ not in ["Held","Knappe"]:
             self._ungueltige_aktion("Dieses Objekt darf keine Herzen nehmen!")
             return
-        if self.tot or not self.framework: return
-        herz = self.framework.spielfeld.finde_herz(self.x, self.y)
+
+        # resolve spielfeld
+        sp = None
+        if fw is not None:
+            sp = getattr(fw, 'spielfeld', None)
+        if not sp:
+            try:
+                import framework.grundlage as grundlage
+                fw2 = getattr(grundlage, 'framework', None)
+                sp = getattr(fw2, 'spielfeld', None) if fw2 else None
+            except Exception:
+                sp = None
+
+        if self.tot or not sp:
+            return
+
+        herz = sp.finde_herz(self.x, self.y)
         if herz:
-            self.framework.spielfeld.entferne_objekt(herz)
+            sp.entferne_objekt(herz)
             self._herzen += 1
             # reward gold to holder if configured
             try:
@@ -347,38 +418,81 @@ class Objekt:
 
     # ---- Wahrnehmung / Infos (für Schüler) ----
     def was_ist_vorn(self):
-        if self.framework and getattr(self.framework, "_aktion_blockiert", False):
+        fw = getattr(self, 'framework', None)
+        if fw and getattr(fw, '_aktion_blockiert', False):
             return
         dx, dy = richtung_offset(self.richtung)
         tx, ty = self.x + dx, self.y + dy
-        return self.framework.spielfeld.objekt_art_an(tx, ty) or \
-               self.framework.spielfeld.terrain_art_an(tx, ty)
+        sp = None
+        if fw is not None:
+            sp = getattr(fw, 'spielfeld', None)
+        if not sp:
+            try:
+                import framework.grundlage as grundlage
+                fw2 = getattr(grundlage, 'framework', None)
+                sp = getattr(fw2, 'spielfeld', None) if fw2 else None
+            except Exception:
+                sp = None
+        if not sp:
+            return None
+        return sp.objekt_art_an(tx, ty) or sp.terrain_art_an(tx, ty)
     
     def was_ist_links(self):
-        if self.framework and getattr(self.framework, "_aktion_blockiert", False):
+        fw = getattr(self, 'framework', None)
+        if fw and getattr(fw, '_aktion_blockiert', False):
             return
         i = RICHTUNGEN.index(self.richtung)
         links_richtung = RICHTUNGEN[(i - 1) % 4]
         dx, dy = richtung_offset(links_richtung)
         tx, ty = self.x + dx, self.y + dy
-        return self.framework.spielfeld.objekt_art_an(tx, ty) or \
-               self.framework.spielfeld.terrain_art_an(tx, ty)
+        sp = None
+        if fw is not None:
+            sp = getattr(fw, 'spielfeld', None)
+        if not sp:
+            try:
+                import framework.grundlage as grundlage
+                fw2 = getattr(grundlage, 'framework', None)
+                sp = getattr(fw2, 'spielfeld', None) if fw2 else None
+            except Exception:
+                sp = None
+        if not sp:
+            return None
+        return sp.objekt_art_an(tx, ty) or sp.terrain_art_an(tx, ty)
     
     def was_ist_rechts(self):
-        if self.framework and getattr(self.framework, "_aktion_blockiert", False):
+        fw = getattr(self, 'framework', None)
+        if fw and getattr(fw, '_aktion_blockiert', False):
             return
         i = RICHTUNGEN.index(self.richtung)
         rechts_richtung = RICHTUNGEN[(i + 1) % 4]
         dx, dy = richtung_offset(rechts_richtung)
         tx, ty = self.x + dx, self.y + dy
-        return self.framework.spielfeld.objekt_art_an(tx, ty) or \
-               self.framework.spielfeld.terrain_art_an(tx, ty)
+        sp = None
+        if fw is not None:
+            sp = getattr(fw, 'spielfeld', None)
+        if not sp:
+            try:
+                import framework.grundlage as grundlage
+                fw2 = getattr(grundlage, 'framework', None)
+                sp = getattr(fw2, 'spielfeld', None) if fw2 else None
+            except Exception:
+                sp = None
+        if not sp:
+            return None
+        return sp.objekt_art_an(tx, ty) or sp.terrain_art_an(tx, ty)
 
     def gib_objekt_vor_dir(self):
         """Gibt das erste Objekt auf dem Feld vor diesem Objekt zurück (oder None).
         Verwendet immer self.richtung und self.framework.spielfeld."""
         sp = getattr(self, "framework", None)
         sp = getattr(sp, "spielfeld", None) if sp else None
+        if not sp:
+            try:
+                import framework.grundlage as grundlage
+                fw2 = getattr(grundlage, 'framework', None)
+                sp = getattr(fw2, 'spielfeld', None) if fw2 else None
+            except Exception:
+                sp = None
         if not sp:
             return None
         richt = getattr(self, "richtung", "down")
@@ -392,9 +506,22 @@ class Objekt:
             self._ungueltige_aktion("Dieses Objekt darf das nicht!")
             return
         """
-        if self.framework and getattr(self.framework, "_aktion_blockiert", False):
+        fw = getattr(self, 'framework', None)
+        if fw and getattr(fw, '_aktion_blockiert', False):
             return
-        return bool(self.framework.spielfeld.finde_herz(self.x, self.y))
+        sp = None
+        if fw is not None:
+            sp = getattr(fw, 'spielfeld', None)
+        if not sp:
+            try:
+                import framework.grundlage as grundlage
+                fw2 = getattr(grundlage, 'framework', None)
+                sp = getattr(fw2, 'spielfeld', None) if fw2 else None
+            except Exception:
+                sp = None
+        if not sp:
+            return False
+        return bool(sp.finde_herz(self.x, self.y))
     
     def herzen_vor_mir(self):
         """Zählt, wie viele Herzen in Sichtlinie liegen – einschließlich des Felds, auf dem das Objekt steht.
@@ -459,15 +586,39 @@ class Objekt:
         if not self.sprite_pfad:
             return
         if self.tot:
+            # Try several KO sprite naming variants:
+            # 1) exact basename + _ko (e.g. sprites/held_left_ko.png)
+            # 2) if basename ends with a direction suffix, try removing it and using base_ko
             basis = os.path.splitext(self.sprite_pfad)[0]
-            ko_pfad = f"{basis}_ko.png"
-            if os.path.exists(ko_pfad):
-                self.bild = pygame.image.load(ko_pfad).convert_alpha()
-                self.bild.set_alpha(220)
-            else:
-                # Fallback: rotes Rechteck, falls kein KO-Sprite existiert
+            candidates = [f"{basis}_ko.png"]
+            try:
+                # detect and strip direction suffix if present
+                tail = basis.rsplit('_', 1)[-1].lower()
+                if tail in ("up", "down", "left", "right", "n", "s", "w", "o", "N", "S", "W", "O"):
+                    base_without_dir = basis.rsplit('_', 1)[0]
+                    candidates.append(f"{base_without_dir}_ko.png")
+            except Exception:
+                pass
+
+            for ko_pfad in candidates:
+                try:
+                    if os.path.exists(ko_pfad):
+                        # use framework loader for consistency
+                        self.bild = lade_sprite(ko_pfad)
+                        try:
+                            self.bild.set_alpha(220)
+                        except Exception:
+                            pass
+                        return
+                except Exception:
+                    continue
+
+            # Fallback: rotes Rechteck, falls kein KO-Sprite existiert
+            try:
                 self.bild = pygame.Surface((64, 64), pygame.SRCALPHA)
                 self.bild.fill((180, 0, 0, 180))
+            except Exception:
+                pass
             return
 
 

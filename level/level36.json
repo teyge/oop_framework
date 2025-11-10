@@ -1,0 +1,46 @@
+{
+  "tiles": [
+    "wyywyyyy",
+    "wtmwdgwh",
+    "pwwkwwww",
+    "wwwwwwcw",
+    "wwwcwwxw"
+  ],
+  "settings": {
+    "Held": {
+      "public": true
+    },
+    "Knappe": {
+      "public": true
+    },
+    "Monster": {
+      "public": true
+    },
+    "Herz": {
+      "public": true
+    },
+    "Tuer": {
+      "public": true
+    },
+    "Code": {
+      "public": true
+    },
+    "Villager": {
+      "public": true
+    },
+    "Hindernis": {
+      "public": true
+    },
+    "orientations": {
+      "3,2": "right",
+      "0,2": "right"
+    },
+    "victory": {
+      "collect_hearts": true,
+      "move_to": null,
+      "classes_present": false
+    },
+    "use_student_module": false,
+    "student_classes_in_subfolder": false
+  }
+}

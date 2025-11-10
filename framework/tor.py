@@ -21,7 +21,8 @@ class Tor(Objekt):
             self.bild = lade_sprite("sprites/tor_zu.png")
 
     def ist_passierbar(self):
-        return not self.offen
+        # Open gate should be passierbar (True when offen==True)
+        return bool(self.offen)
     
     #def _lade_sprite(self):
         
