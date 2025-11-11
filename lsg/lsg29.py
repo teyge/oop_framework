@@ -33,15 +33,15 @@ level.lade(29, weiblich=False)
 from framework.grundlage import *
 
 key_color = ""
-
+tuer = held.gib_objekt_vor_dir()
 
 x = 1
-while key_color != "golden":
+while key_color != tuer.get_farbe():
     key = level.gib_objekt_bei(x,3)
     key_color = key.gib_farbe()
     x+=1
 
-tuer = held.gib_objekt_vor_dir()
+
 tuer.verwende_schluessel(key)
 held.geh()
 held.geh()

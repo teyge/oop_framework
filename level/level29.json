@@ -48,7 +48,7 @@
     "quest_max_kosten": 0,
     "quest_mode": "items",
     "quest_items_needed": 1,
-    "random_door": false,
+    "random_door": true,
     "random_keys": true,
     "use_student_module": false,
     "student_classes_in_subfolder": false

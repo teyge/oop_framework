@@ -3,7 +3,7 @@
     "mwtt",
     "mpdh",
     "mwtt",
-    "msss"
+    "mwsw"
   ],
   "settings": {
     "Held": {
@@ -34,10 +34,8 @@
       "1,1": "right"
     },
     "colors": {
-      "2,1": "golden",
-      "3,3": "golden",
-      "2,3": "red",
-      "1,3": "green"
+      "2,3": "green",
+      "2,1": "violet"
     },
     "victory": {
       "collect_hearts": true,
@@ -48,8 +46,8 @@
     "quest_max_kosten": 0,
     "quest_mode": "items",
     "quest_items_needed": 1,
-    "random_door": true,
-    "random_keys": true,
+    "random_door": false,
+    "random_keys": false,
     "use_student_module": false,
     "student_classes_in_subfolder": false
   }

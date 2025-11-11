@@ -24,7 +24,8 @@ class Objekt:
         self._update_sprite_richtung()
         
     def set_privatmodus(self, aktiv: bool):
-        print("Setze private mode bei",self.typ)
+        # Silence status messages when toggling private mode; keep behavior
+        # of setting the internal flag.
         self._privatmodus = aktiv
         
     def setze_richtung(self,r):

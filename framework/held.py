@@ -48,6 +48,49 @@ class Held(Objekt):
             except Exception:
                 pass
 
+
+    def setze_position(self, x, y):
+
+        # Deaktiviere setter für Schülerumgebung
+        # if True löst immer aus und beendet über return den Methodenaufruf
+        # Entwickler-Notiz: auf False setzen zum Aktivieren
+        if True:
+            print("setze_position ist in Schülerumgebung deaktiviert!")
+            return
+
+
+
+        """Setzt die Position nur, wenn (x,y) im Spielfeld liegt,
+        das Terrain dort 'Weg' ist und kein anderes Objekt dort steht."""
+        sp = getattr(self, "framework", None)
+        sp = getattr(sp, "spielfeld", None) if sp else None
+        if not sp:
+            print("[Warnung] Kein Spielfeld vorhanden – setze_position() abgebrochen.")
+            return False
+
+        # 1) Grenzen prüfen
+        if not sp.innerhalb(x, y):
+            print(f"[{self.typ}] Position außerhalb des Spielfelds: ({x},{y})")
+            return False
+
+        # 2) Terrain muss 'Weg' sein
+        if sp.terrain_art_an(x, y) != "Weg":
+            print(f"[{self.typ}] Feld ({x},{y}) ist kein begehbarer Weg.")
+            return False
+
+        # 3) Feld muss leer sein (kein anderes Objekt)
+        occupant = sp.objekt_an(x, y)
+        if occupant is not None and occupant is not self:
+            print(f"[{self.typ}] Position ({x},{y}) ist bereits belegt ({occupant.typ}).")
+            return False
+
+        # 4) Setzen + kurzer sichtbarer Refresh
+        self.x, self.y = x, y
+        self._render_and_delay(150)
+        print(f"[{self.typ}] wurde nach ({x},{y}) gesetzt.")
+        return True
+
+
     def aktiviere_steuerung(self):
         try:
             self.framework.taste_registrieren(pygame.K_LEFT,  lambda: self.links(0))

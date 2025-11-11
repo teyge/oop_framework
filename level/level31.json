@@ -1,37 +1,33 @@
 {
   "tiles": [
-    "wbwhwb",
-    "tbbqbb",
-    "wwwpww",
-    "tttwtt"
+    "tptwtwtwtwt",
+    "ttththththt",
+    "ttttttttttt"
   ],
   "settings": {
     "Held": {
       "public": false
     },
     "Knappe": {
-      "public": false
+      "public": true
     },
     "Monster": {
-      "public": false
+      "public": true
     },
     "Herz": {
       "public": false
     },
     "Tuer": {
-      "public": false
+      "public": true
     },
     "Code": {
-      "public": false
+      "public": true
     },
     "Villager": {
-      "public": false
+      "public": true
     },
     "Hindernis": {
       "public": false
-    },
-    "villagers": {
-      "3,1": "female"
     },
     "victory": {
       "collect_hearts": true,
@@ -39,8 +35,8 @@
       "classes_present": false
     },
     "initial_gold": 0,
-    "quest_mode": "raetsel",
     "quest_max_kosten": 0,
+    "quest_mode": "items",
     "quest_items_needed": 1,
     "random_door": false,
     "random_keys": false,

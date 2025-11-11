@@ -6,8 +6,5 @@ from framework.grundlage import *
 
 
 
-
-
-
 # Dieser Befehl muss immer am Ende stehen
 framework.starten()

@@ -22,6 +22,9 @@ class Herz(Objekt):
         Liefert True bei Erfolg, False wenn das Feld außerhalb oder nicht begehbar ist.
         Diese Methode verändert kein Rendering oder die Level-Platzierung.
         """
+
+        if True:
+            return
         try:
             sp = getattr(self.framework, 'spielfeld', None)
             if not sp:
@@ -41,3 +44,6 @@ class Herz(Objekt):
         except Exception as e:
             print(f"[Herz] Fehler beim Setzen der Position: {e}")
             return False
+
+    def setze_position(self, x, y):
+        return

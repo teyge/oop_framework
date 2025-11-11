@@ -18,6 +18,27 @@ class Schluessel(Objekt):
 
     def gib_farbe(self):
         return self.farbe
+    
+    def get_farbe(self):
+        return self.farbe
+    
+    def set_farbe(self,farbe):
+        if farbe in ["green","red","blue","golden","violet"]:
+            self.farbe = farbe
+            self.color = farbe
+            # update the sprite path to match the new color and reload the image
+            try:
+                self.sprite_pfad = f"sprites/key_{farbe}.png"
+                self.bild = lade_sprite(self.sprite_pfad)
+            except Exception:
+                # If loading fails, keep previous image but continue
+                pass
+            # apply direction-specific variant if available and show a short render
+            self._update_sprite_richtung()
+            self._render_and_delay(150)
+
+        else:
+            print("Ungültige Farbe: ", farbe)
 
     def benutzen(self, ziel):
         """Try to use this key on a target (e.g. a Tuer)."""

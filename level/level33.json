@@ -1,0 +1,50 @@
+{
+  "tiles": [
+    "wbwhwb",
+    "tbbqbb",
+    "wwwpww",
+    "tttwtt"
+  ],
+  "settings": {
+    "Held": {
+      "public": false
+    },
+    "Knappe": {
+      "public": false
+    },
+    "Monster": {
+      "public": false
+    },
+    "Herz": {
+      "public": false
+    },
+    "Tuer": {
+      "public": false
+    },
+    "Code": {
+      "public": false
+    },
+    "Villager": {
+      "public": false
+    },
+    "Hindernis": {
+      "public": false
+    },
+    "villagers": {
+      "3,1": "female"
+    },
+    "victory": {
+      "collect_hearts": true,
+      "move_to": null,
+      "classes_present": false
+    },
+    "initial_gold": 0,
+    "quest_mode": "raetsel",
+    "quest_max_kosten": 0,
+    "quest_items_needed": 1,
+    "random_door": false,
+    "random_keys": false,
+    "use_student_module": false,
+    "student_classes_in_subfolder": false
+  }
+}
